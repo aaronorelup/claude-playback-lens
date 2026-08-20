@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Claude Playback Lens</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%23b4531f' stroke-width='2'/%3E%3Cline x1='12' y1='12' x2='15' y2='15' stroke='%23b4531f' stroke-width='2'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<a class="lens-skip" href="#lens-content">skip to content</a>
+
+<!-- The router owns everything inside #lens-app: it builds the three fixed
+     bands (crumb rail, scope sentence, stat header), the banner slot, the
+     content root, the footer and the keyboard sheet. Nothing else writes here. -->
+<div id="lens-app"></div>
+
+<noscript>
+  <p class="lens-noscript">
+    Claude Playback Lens is a local ES-module app: it needs JavaScript enabled.
+    It reads only the transcripts already on this machine and never uploads anything.
+  </p>
+</noscript>
+
+<script type="module">
+  import { start } from './js/router.mjs';
+  import { pricingOrNull } from './js/api.mjs';
+
+  // Load the rate table early so the first money figure prints through the same
+  // module the server uses. Failure is non-fatal: figures then say so.
+  pricingOrNull();
+
+  start({ root: document.getElementById('lens-app') }).catch((err) => {
+    const app = document.getElementById('lens-app');
+    const card = document.createElement('div');
+    card.className = 'lens-card lens-card--error';
+    const title = document.createElement('h2');
+    title.className = 'lens-card__title';
+    title.textContent = 'The app could not start';
+    const body = document.createElement('p');
+    body.className = 'lens-card__body';
+    body.textContent = String((err && err.message) || err);
+    card.appendChild(title);
+    card.appendChild(body);
+    app.appendChild(card);
+  });
+</script>
+
+</body>
+</html>

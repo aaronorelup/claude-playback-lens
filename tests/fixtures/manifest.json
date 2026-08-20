@@ -1,0 +1,290 @@
+{
+  "extractedAt": "2026-08-17T08:37:30.665Z",
+  "corpus": "<redacted>",
+  "cases": {
+    "r2a-proja-00000001": {
+      "sourceRel": "C--Users-userx-projects-proj-a/0000000a-0000-4000-8000-000000000001.jsonl",
+      "lines": [
+        10,
+        11,
+        12,
+        14
+      ],
+      "notes": {
+        "sessionId": "0000000a-0000-4000-8000-000000000001",
+        "dupMsgId": "msg_011A00000000000000000001",
+        "sharedMsgIds": 43,
+        "firstTimestamped": {
+          "line": 1,
+          "iso": "2026-07-23T21:54:42.352Z",
+          "ms": 1784843682352,
+          "type": "queue-operation"
+        },
+        "opensWithType": "queue-operation",
+        "copySessionIds": [
+          "0000000a-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    "r2a-proja-00000002": {
+      "sourceRel": "C--Users-userx-projects-proj-a/0000000a-0000-4000-8000-000000000002.jsonl",
+      "lines": [
+        10,
+        11,
+        12,
+        14
+      ],
+      "notes": {
+        "sessionId": "0000000a-0000-4000-8000-000000000002",
+        "dupMsgId": "msg_011A00000000000000000001",
+        "sharedMsgIds": 43,
+        "firstTimestamped": {
+          "line": 1,
+          "iso": "2026-07-23T21:54:42.352Z",
+          "ms": 1784843682352,
+          "type": "queue-operation"
+        },
+        "opensWithType": "queue-operation",
+        "copySessionIds": [
+          "0000000a-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    "r2b-projb-original": {
+      "sourceRel": "C--Users-userx-projects-proj-b/0000000a-0000-4000-8000-000000000003.jsonl",
+      "lines": [
+        1133,
+        1134
+      ],
+      "notes": {
+        "sessionId": "0000000a-0000-4000-8000-000000000003",
+        "dupMsgId": "msg_011A00000000000000000002",
+        "dupLineNos": [
+          1133,
+          1134
+        ],
+        "openingUntimestampedLines": [],
+        "firstTimestamped": {
+          "line": 1,
+          "iso": "2026-07-20T06:37:00.188Z",
+          "ms": 1784529420188,
+          "type": "queue-operation"
+        },
+        "opensWithType": "queue-operation",
+        "copySessionIds": [
+          "0000000a-0000-4000-8000-000000000003"
+        ]
+      }
+    },
+    "r2b-projb-resumed": {
+      "sourceRel": "C--Users-userx-projects-proj-b/0000000a-0000-4000-8000-000000000004.jsonl",
+      "lines": [
+        1,
+        2,
+        3,
+        4,
+        877,
+        878
+      ],
+      "notes": {
+        "sessionId": "0000000a-0000-4000-8000-000000000004",
+        "dupMsgId": "msg_011A00000000000000000002",
+        "dupLineNos": [
+          877,
+          878
+        ],
+        "openingUntimestampedLines": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "firstTimestamped": {
+          "line": 5,
+          "iso": "2026-07-20T18:59:11.566Z",
+          "ms": 1784573951566,
+          "type": "queue-operation"
+        },
+        "opensWithType": "custom-title",
+        "copySessionIds": [
+          "0000000a-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    "r6b-empty-iterations": {
+      "sourceRel": "C--Users-userx-projects-proj-b/0000000a-0000-4000-8000-000000000003.jsonl",
+      "lines": [
+        1133,
+        1134
+      ],
+      "notes": {
+        "msgId": "msg_011A00000000000000000002",
+        "stopReason": "end_turn",
+        "outputTokens": 3,
+        "version": "2.1.209",
+        "note": "stop_reason end_turn with iterations: [] — a non-null stop_reason is NOT sufficient for R6"
+      }
+    },
+    "r4-synthetic": {
+      "sourceRel": "C--Users-userx-projects-proj-b/0000000a-0000-4000-8000-000000000003.jsonl",
+      "lines": [
+        1135
+      ],
+      "notes": {
+        "msgId": "0000000a-0000-4000-8000-000000000117",
+        "model": "<synthetic>",
+        "stopReason": "stop_sequence",
+        "note": "usage.iterations === null is the exact R4 discriminator; message.id is a UUID, not msg_*"
+      }
+    },
+    "r3-fallback-00000003": {
+      "sourceRel": "C--Users-userx-projects-proj-e/0000000a-0000-4000-8000-000000000007.jsonl",
+      "lines": [
+        547,
+        548,
+        549,
+        550
+      ],
+      "notes": {
+        "msgId": "msg_011A00000000000000000003",
+        "messageModel": "claude-opus-5",
+        "iterations": [
+          {
+            "type": "message",
+            "model": "claude-fable-5",
+            "output_tokens": 972,
+            "cache_read_input_tokens": 328023,
+            "cache_creation_input_tokens": 510,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 510
+            },
+            "input_tokens": 2
+          },
+          {
+            "type": "fallback_message",
+            "model": "claude-opus-5",
+            "output_tokens": 965,
+            "cache_read_input_tokens": 274832,
+            "cache_creation_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "input_tokens": 2
+          }
+        ],
+        "topLevelUsage": {
+          "input_tokens": 2,
+          "output_tokens": 965,
+          "cache_read_input_tokens": 274832,
+          "cache_creation_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 510,
+            "ephemeral_5m_input_tokens": 0
+          }
+        },
+        "note": "top-level usage on a fallback message is a measured inconsistent merge; R3 bills from the elements"
+      }
+    },
+    "r3-fallback-00000004": {
+      "sourceRel": "C--Users-userx-projects-proj-d/0000000a-0000-4000-8000-000000000006.jsonl",
+      "lines": [
+        349,
+        350,
+        351,
+        352,
+        353,
+        354
+      ],
+      "notes": {
+        "msgId": "msg_011A00000000000000000004",
+        "messageModel": "claude-opus-4-8",
+        "iterations": [
+          {
+            "type": "message",
+            "model": "claude-fable-5",
+            "output_tokens": 1245,
+            "cache_read_input_tokens": 376005,
+            "cache_creation_input_tokens": 2062,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2062
+            },
+            "input_tokens": 2136
+          },
+          {
+            "type": "fallback_message",
+            "model": "claude-opus-4-8",
+            "output_tokens": 1604,
+            "cache_read_input_tokens": 335464,
+            "cache_creation_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "input_tokens": 2136
+          }
+        ],
+        "topLevelUsage": {
+          "input_tokens": 2136,
+          "output_tokens": 1604,
+          "cache_read_input_tokens": 335464,
+          "cache_creation_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 2062,
+            "ephemeral_5m_input_tokens": 0
+          }
+        },
+        "note": "top-level usage on a fallback message is a measured inconsistent merge; R3 bills from the elements"
+      }
+    },
+    "r1-agent-multiline": {
+      "sourceRel": "C--Users-userx-projects-proj-c/0000000a-0000-4000-8000-000000000010/subagents/workflows/wf_00000001-a01/agent-a0000000000000001.jsonl",
+      "lines": [
+        4,
+        5,
+        7
+      ],
+      "notes": {
+        "msgId": "msg_011A00000000000000000005",
+        "outputPerLine": [
+          8,
+          8,
+          263
+        ],
+        "stopPerLine": [
+          null,
+          null,
+          "tool_use"
+        ],
+        "note": "output progresses across lines; the LAST line holds the final values (R1 keep-last)"
+      }
+    },
+    "r6a-never-finalized": {
+      "sourceRel": "C--Users-userx-projects-proj-c/0000000a-0000-4000-8000-000000000010/subagents/workflows/wf_00000001-a01/agent-a0000000000000001.jsonl",
+      "lines": [
+        9,
+        10,
+        12,
+        14
+      ],
+      "notes": {
+        "msgId": "msg_011A00000000000000000006",
+        "outputPerLine": [
+          5,
+          5,
+          5,
+          5
+        ],
+        "stopPerLine": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "note": "every line stop_reason null, kept line has NO iterations key — R6 neverFinalized; output is a stub, billed as recorded"
+      }
+    }
+  }
+}
