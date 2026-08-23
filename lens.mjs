@@ -31,8 +31,8 @@ import {
   WORKER_CRASH_CAP, RESCAN_INTERVAL_MS, PROBLEMS_CAP, PROBLEM_SOURCE_CAP,
 } from './server/limits.mjs';
 
-const APP_NAME = 'Claude Playback Lens';
-const APP_VERSION = '3.0.0';
+export const APP_NAME = 'Claude Playback Lens';
+export const APP_VERSION = '3.0.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // ------------------------------------------------------------ args
@@ -57,7 +57,7 @@ if (FLAGS.help) {
 }
 
 // ------------------------------------------------------------ module loading
-async function tryImport(rel) {
+export async function tryImport(rel) {
   try { return await import(pathToFileURL(path.join(HERE, rel)).href); }
   catch (e) {
     if (e && (e.code === 'ERR_MODULE_NOT_FOUND' || e.code === 'MODULE_NOT_FOUND')) return null;
@@ -67,7 +67,7 @@ async function tryImport(rel) {
 }
 
 // ------------------------------------------------------------ config
-async function resolveProjects(mods) {
+export async function resolveProjects(mods) {
   if (mods.config && mods.config.resolveProjectsDir) {
     const r = mods.config.resolveProjectsDir(process.argv.slice(2), process.env);
     return { dir: r.dir, source: r.source };
