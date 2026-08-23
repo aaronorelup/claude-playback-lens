@@ -85,6 +85,58 @@ test('COR-5 — a VALID cursor resumes and completes with a clean done', async (
   await fsp.rm(root, { recursive: true, force: true });
 });
 
+// An UNDECODABLE cursor used to be indistinguishable from "no cursor":
+// fromB64Url swallowed the failure and returned null, so the scan restarted at
+// byte 0 and streamed those matches as if they were the ones past the cap. The
+// corpus below MATCHES the query, so a silent rescan shows up as match events —
+// that is what these tests pin.
+async function runWithCursor(tag, after) {
+  const root = path.join(os.tmpdir(), `lens-fix-find-${tag}-${process.pid.toString(36)}`);
+  const slug = `C--find-${tag}`;
+  await fsp.rm(root, { recursive: true, force: true });
+  await fsp.mkdir(path.join(root, slug), { recursive: true });
+  const id = 'ffffffff-ffff-4fff-8fff-fffffffffff5';
+  const rel = `${slug}/${id}.jsonl`;
+  const line = '{"type":"user","message":{"content":"hay"}}\n';
+  await fsp.writeFile(path.join(root, slug, `${id}.jsonl`), line + line + line);
+  const sessions = [{ slug, id, mainRel: rel, files: [rel] }];
+  const fileTable = new Map([[rel, { size: line.length * 3, mtimeMs: 5 }]]);
+  const events = [];
+  await runFind({
+    projectsDir: root, sessions, fileTable, q: 'hay', re: false, caseSensitive: false,
+    after, scope: { kind: 'store' },
+    emit: (ev, d) => events.push({ ev, d }),
+  });
+  await fsp.rm(root, { recursive: true, force: true });
+  return events;
+}
+
+function assertRefused(events) {
+  assert.equal(events.filter((e) => e.ev === 'match').length, 0, 'refused before scanning — no silent full rescan');
+  assert.ok(!events.some((e) => e.ev === 'done'), 'no clean done for a scan that never ran');
+  const err = events.find((e) => e.ev === 'error');
+  assert.ok(err, 'error event emitted');
+  assert.equal(err.d.code, 'find-cursor-stale');
+  const prob = events.find((e) => e.ev === 'problem' && e.d.code === 'find-cursor-stale');
+  assert.ok(prob, 'problem event emitted');
+  assert.equal(prob.d.severity, 'warning');
+  assert.match(prob.d.message, /decode/, 'message names the cause: it did not decode');
+}
+
+test('an UNDECODABLE cursor is refused with find-cursor-stale, never a silent full rescan', async () => {
+  assertRefused(await runWithCursor('garbage', 'not-a-real-cursor'));
+});
+
+test('a TRUNCATED cursor is refused with find-cursor-stale', async () => {
+  const full = Buffer.from(JSON.stringify({ k: 'C--x/y', f: 'y.jsonl', l: 3, m: 9 }), 'utf8').toString('base64url');
+  assertRefused(await runWithCursor('truncated', full.slice(0, 8)));
+});
+
+test('a cursor whose payload decodes to literal null is refused too', async () => {
+  // indistinguishable from fromB64Url's failure return — treated as undecodable
+  assertRefused(await runWithCursor('null', Buffer.from('null', 'utf8').toString('base64url')));
+});
+
 test('COR-21 — a raced-deleted file still advances bytesDone to 100%', async () => {
   const root = path.join(os.tmpdir(), `lens-fix-find3-${process.pid.toString(36)}`);
   const slug = 'C--find3';

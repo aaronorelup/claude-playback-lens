@@ -181,7 +181,28 @@ export async function runFind(opts) {
   const ofBytes = sessions.reduce((a, s) => a + orderedFiles(s).reduce((x, r) => x + (fileTable?.get(r)?.size ?? 0), 0), 0);
   let bytesDone = 0, sessionsDone = 0, matches = 0, lastProgress = 0;
   const strips = { base64: 0, base64Bytes: 0, signature: 0, signatureBytes: 0 };
+  // A cursor that does not DECODE is not a cursor. fromB64Url swallows the
+  // base64url/JSON failure and returns null — the very value this line reads as
+  // "no cursor" — so falling through would silently restart the scan at byte 0
+  // and report those matches as if they were the ones PAST the cap. Refuse
+  // before any scanning, with the same problem+error pair a semantically stale
+  // cursor gets at the bottom of this function: the caller's remedy is
+  // identical (re-run without it), only the cause differs.
+  //
+  // A payload that decodes to literal `null` is refused too — it is
+  // indistinguishable from the failure return here, and would otherwise vanish
+  // into the same full rescan. The sibling MCP gate (`cursorDecodes` in
+  // claude-playback-lens-mcp) makes the same call for the same reason.
   const resume = opts.after ? fromB64Url(opts.after) : null;
+  if (opts.after && resume === null) {
+    emit('problem', {
+      code: 'find-cursor-stale', severity: 'warning', scope: 'store',
+      message: 'the resume cursor did not decode (truncated or corrupted) — it is not a resume token this scan can read, so the search must be re-run from the start without it',
+      affects: 'display', count: 1,
+    });
+    emit('error', { code: 'find-cursor-stale', message: 'resume cursor did not decode (truncated or corrupted) — re-run the scan without it' });
+    return;
+  }
   let resuming = resume !== null;
   let cursorResolved = false; // set the moment the cursor's session+file are found
 
