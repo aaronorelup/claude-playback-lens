@@ -11,6 +11,7 @@ import { vtable } from '../components/vtable.mjs';
 import { a, simpleTable } from './dom.mjs';
 import { num, fmtInt, fmtBytes, fmtDur, shortId } from './fmt.mjs';
 import { routes } from './links.mjs';
+import { withQuery } from '../router/pattern.mjs';
 
 let _renders = 0;
 export function noteRender() { _renders++; }
@@ -63,6 +64,61 @@ export function statHeader(ctx, props = {}) {
     footnote: props.footnote ?? (agg ? { requests: agg.requests, rowsSumToHeader: props.rowsSumToHeader } : null),
   });
   if (props.scope) ctx.registerScope?.(props.scope);
+}
+
+/* ===================================================== the view strip ==
+ * ONE tab component for every level. Before this, L0/L1/L2 and L4 each built
+ * their own strip and only some of them registered the view list, so `t`
+ * cycled on some pages and not others and the active tab was marked three
+ * different ways.
+ */
+
+/**
+ * viewTabs(ctx, tabs, current) — the `?v=` strip.
+ *
+ *   tabs    [{ key, label, title?, default? }] in DISPLAY order. The default
+ *           view is the entry marked `default: true`, else tabs[0]; its tab
+ *           drops `?v=` entirely, which is exactly what the router's `t`
+ *           cycling does for views[0] (router.cycleViews).
+ *   current the active key (null → the default).
+ *
+ * Every href is built with the router's own withQuery over the hash the reader
+ * is standing on, so `?q`, `?k`, `?sort`, `?day`, `?returnTo` and every unknown
+ * param survive a tab click (DESIGN §0).
+ *
+ * Registers the view list for `t` in a FIXED order — default first, then
+ * display order — so cycling is stable across renders.
+ */
+export function viewTabs(ctx, tabs, current = null) {
+  const list = (tabs ?? []).filter(Boolean).map((t) => (typeof t === 'string' ? { key: t, label: t } : t));
+  if (!list.length) return null;
+  const dflt = (list.find((t) => t.default) ?? list[0]).key ?? null;
+  const active = current ?? dflt;
+
+  ctx?.registerViews?.([
+    ...list.filter((t) => t.key === dflt).map((t) => ({ key: t.key, label: t.label })),
+    ...list.filter((t) => t.key !== dflt).map((t) => ({ key: t.key, label: t.label })),
+  ]);
+
+  // Only a real URLSearchParams contributes a query string: a test ctx that
+  // stubs every hook with a function must not have `() => {}` stringified into
+  // an href.
+  const q = ctx?.query;
+  const qs = (q && typeof q.get === 'function' && typeof q.toString === 'function') ? q.toString() : '';
+  const base = `#${typeof ctx?.path === 'string' ? ctx.path : '/'}`;
+  const here = qs ? `${base}?${qs}` : base;
+
+  const nav = h('nav', { class: 'lens-tabs', 'aria-label': 'views' });
+  for (const t of list) {
+    const on = t.key === active;
+    nav.appendChild(h('a', {
+      class: `lens-tabs__tab${on ? ' lens-tabs__tab--on' : ''}`,
+      href: withQuery(here, { v: t.key === dflt ? null : t.key }),
+      'aria-current': on ? 'page' : null,
+      title: t.title || null,
+    }, t.label));
+  }
+  return nav;
 }
 
 /**

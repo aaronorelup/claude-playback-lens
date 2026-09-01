@@ -223,6 +223,7 @@ through `/api/image`. A parsed session's retained heap stays under ~10 MB.
 | `server/` | the HTTP server, the JSONL reader, the parser, the cost ledger, the index cache, find, audit |
 | `web/js/` | the client — `api.mjs` (the one door to the server), `router.mjs`, `components/`, `views/` |
 | `web/index.html`, `web/styles.css` | the page |
+| `web/fonts/` | self-hosted brand faces — **ships empty**; see its README. Nothing is fetched from a font host, and the UI is correct on the system stacks alone |
 | `shared/pricing.mjs` | the rate table, used by both sides |
 | `tests/` | the suite (no dependencies — `node:test` only) |
 | `docs/SPEC.md` | normative: file formats, the accounting rules (R1–R10), the API |

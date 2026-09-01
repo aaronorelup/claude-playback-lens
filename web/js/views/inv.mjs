@@ -10,9 +10,9 @@
  */
 
 import { kit, apiUrl, fetchRaw } from '../lib/net.mjs';
-import { h, a, unknown, section, factList } from '../lib/dom.mjs';
+import { h, a, unknown, section, factList, tablewrap, disclosure, disclosureTools } from '../lib/dom.mjs';
 import { fmtInt, fmtBytes, shortId, truncate } from '../lib/fmt.mjs';
-import { routes } from '../lib/links.mjs';
+import { routes, withReturn } from '../lib/links.mjs';
 import { page, errorCard, pendingCard, statHeader, mountCrumbs, handle404 } from '../lib/chrome.mjs';
 
 /* ==================================================== rel classification ==
@@ -205,7 +205,8 @@ export async function renderInventory(ctx) {
   } else {
     const denom = filesPayload.denominators ?? inv.filesLedgerDenominators ?? null;
     if (denom) {
-      filesSec.appendChild(h('p', { class: 'lens-coverage', text: coverageText(denom) }));
+      filesSec.appendChild(h('p', { class: 'lens-coverage', title: 'the denominator for this ledger, printed on it' },
+        ...coverageNodes(denom)));
     } else {
       filesSec.appendChild(unknown('the payload records no tool-call denominators for this ledger'));
     }
@@ -214,9 +215,16 @@ export async function renderInventory(ctx) {
         h('th', { text: 'path' }), h('th', { text: 'tier' }),
         h('th', { class: 'lens-table__num', text: 'reads' }), h('th', { class: 'lens-table__num', text: 'writes' }),
         h('th', { class: 'lens-table__num', text: 'edits' }), h('th', { class: 'lens-table__num', text: 'searches' }),
-        h('th', { class: 'lens-table__num', text: 'sidecar' }))));
+        h('th', { class: 'lens-table__num', text: 'sidecar' }),
+        h('th', { title: 'the page in this app that shows the recorded path — only a path inside the session directory has one', text: 'in this app' }))));
     const tb = h('tbody');
     for (const f of ledgerRows) {
+      // "nothing in the app lacks a raw view" — for a path the app can
+      // address. A ledger path is a recorded tool input: when it is
+      // session-relative it gets its surface (…/x/<rel> or the agent /
+      // workflow / memory page it is served as); when it is an absolute
+      // working-tree path the cell says so rather than fabricating a rel.
+      const rel = sessionRelOf(f.path);
       tb.appendChild(h('tr', {},
         h('td', {}, h('code', { text: f.path })),
         h('td', { text: f.tier ?? '' }),
@@ -224,14 +232,25 @@ export async function renderInventory(ctx) {
         h('td', { class: 'lens-table__num', text: fmtInt(f.writes ?? 0) }),
         h('td', { class: 'lens-table__num', text: fmtInt(f.edits ?? 0) }),
         h('td', { class: 'lens-table__num', text: fmtInt(f.searches ?? 0) }),
-        h('td', { class: 'lens-table__num', text: fmtInt(f.sidecar ?? 0) })));
+        h('td', { class: 'lens-table__num', text: fmtInt(f.sidecar ?? 0) }),
+        h('td', {}, rel
+          ? surfaceLink(classifyRel(rel), { slug, sid, rel })
+          : unknown('this row records an absolute working-tree path; the store holds no such file, and deriving a session-relative path from it would need a store root no payload records'))));
     }
     t.appendChild(tb);
-    filesSec.appendChild(t);
+    filesSec.appendChild(tablewrap(t));
     filesSec.appendChild(h('p', {
       class: 'lens-ledger__total',
       text: `${fmtInt(ledgerRows.length)} of ${fmtInt(filesPayload.total ?? ledgerRows.length)} recorded (path, tier) pairs`,
     }));
+    // Arithmetic over the rows above, so the "in this app" column is a proof
+    // rather than a column of dashes: exactly this many recorded paths lie
+    // inside the session directory and therefore have a page here.
+    const addressable = ledgerRows.reduce((n, f) => n + (sessionRelOf(f.path) ? 1 : 0), 0);
+    filesSec.appendChild(h('p', { class: 'lens-coverage' },
+      h('span', { class: 'lens-num', text: fmtInt(addressable) }),
+      ' of ', h('span', { class: 'lens-num', text: fmtInt(ledgerRows.length) }),
+      ' recorded paths are session-relative and have a page in this app; the rest are absolute working-tree paths, which the store does not hold.'));
   }
   filesSec.appendChild(h('p', {
     class: 'lens-note',
@@ -255,21 +274,31 @@ export async function renderInventory(ctx) {
         h('td', { text: b.bucket }),
         h('td', { class: 'lens-table__num', text: fmtInt(b.count) }),
         h('td', { text: b.why }),
-        h('td', {}, b.kind ? a(routes.session(slug, sid, { k: b.kind }), 'show these') : unknown('no row kind to filter on — see the raw files above'))));
+        h('td', {}, b.kind ? a(withReturn(routes.session(slug, sid, { k: b.kind })), 'show these') : unknown('no row kind to filter on — see the raw files above'))));
     }
     t.appendChild(tb);
-    evSec.appendChild(t);
+    evSec.appendChild(tablewrap(t));
   }
   body.appendChild(evSec);
 
-  // ---- censuses
-  body.appendChild(censusSection('events by type', inv.perType ?? inv.eventsByType, { slug, sid, linkKind: true }));
-  body.appendChild(censusSection('attachment kinds', inv.attachmentKinds, { slug, sid, prefix: 'attachment:' }));
+  // ---- censuses. Four recorded censuses, each a native disclosure carrying
+  // its own row count, under one expand-all/collapse-all control: the page is
+  // a completeness proof and every census must stay reachable, but four full
+  // tables above the problems drawer buried it.
+  const censuses = h('div', { class: 'lens-inv__censuses' });
+  censuses.append(
+    censusSection('events by type', inv.perType ?? inv.eventsByType, { slug, sid, linkKind: true }),
+    censusSection('attachment kinds', inv.attachmentKinds, { slug, sid, prefix: 'attachment:' }),
+    censusSection('sessionIds seen in these files',
+      arrayCensus(inv.sessionIdsSeen ?? payload.sessionIdsSeen
+        ?? (Array.isArray(payload.otherSessionIds) ? [sid, ...payload.otherSessionIds] : null)), { slug, sid }),
+    censusSection('models', inv.models ?? payload.usageByModel, { slug, sid }));
+  const censusSec = section('recorded censuses');
+  const tools = disclosureTools(censuses, { label: 'censuses' });
+  if (tools) censusSec.appendChild(tools);
+  censusSec.appendChild(censuses);
+  body.appendChild(censusSec);
   body.appendChild(imagesSection(images, { slug, sid }));
-  body.appendChild(censusSection('sessionIds seen in these files',
-    arrayCensus(inv.sessionIdsSeen ?? payload.sessionIdsSeen
-      ?? (Array.isArray(payload.otherSessionIds) ? [sid, ...payload.otherSessionIds] : null)), { slug, sid }));
-  body.appendChild(censusSection('models', inv.models ?? payload.usageByModel, { slug, sid }));
   body.appendChild(spillsSection(inv.spills ?? inv.spillCounts, { slug, sid }));
   body.appendChild(expectedZeros(inv, payload));
 
@@ -283,41 +312,77 @@ function pendingOfLocal(res) {
   return !!(p && typeof p === 'object' && !Array.isArray(p));
 }
 
-function coverageText(denom) {
+/**
+ * The denominator sentence, as NODES: the figures ride in `.lens-num` so a
+ * column of counts inside a sentence still reads as monospace tabular figures
+ * rather than as prose. An unreported figure is `—` with its reason, never a 0.
+ */
+function coverageNodes(denom) {
   // shipped names first, older aliases as fallbacks
   const main = Number(denom.mainToolCallsWithPath ?? denom.mainToolCalls ?? denom.main ?? NaN);
   const agent = Number(denom.agentToolCallsWithPath ?? denom.agentToolCalls ?? denom.agent ?? NaN);
   const noSidecar = Number(denom.agentResultsNoSidecar ?? denom.agentResultsWithoutSidecar ?? denom.noSidecar ?? NaN);
-  const parts = [`paths from ${Number.isFinite(main) ? fmtInt(main) : '—'} main-thread and ${Number.isFinite(agent) ? fmtInt(agent) : '—'} agent tool calls that carry a path key`];
-  if (Number.isFinite(noSidecar)) parts.push(`${fmtInt(noSidecar)} agent tool results carry no path sidecar`);
-  return parts.join('; ') + '.';
+  const fig = (n, reason) => (Number.isFinite(n) ? h('span', { class: 'lens-num', text: fmtInt(n) }) : unknown(reason));
+  const out = [
+    'paths from ', fig(main, 'no main-thread tool-call denominator is recorded on this payload'),
+    ' main-thread and ', fig(agent, 'no agent tool-call denominator is recorded on this payload'),
+    ' agent tool calls that carry a path key',
+  ];
+  if (Number.isFinite(noSidecar)) {
+    out.push('; ', h('span', { class: 'lens-num', text: fmtInt(noSidecar) }), ' agent tool results carry no path sidecar');
+  }
+  out.push('.');
+  return out;
 }
 
-function normalizeFiles(list) {
-  return (list ?? []).map((f) => {
-    const rel = f.rel ?? f.path ?? f.file ?? String(f);
-    const classification = f.class ? { class: f.class, surface: f.surface ?? 'raw', ...f } : classifyRel(rel);
-    return {
-      rel,
-      bytes: f.bytes ?? f.size ?? null,
-      lines: f.lines ?? null,
-      classification,
-    };
-  }).sort((x, y) => String(x.rel).localeCompare(String(y.rel)));
-}
-
-function surfaceLink(cls, { slug, sid }) {
+/**
+ * The app surface that shows a SESSION-RELATIVE path (SPEC §2's ten store
+ * patterns), carrying the reader's current hash so the surface can offer a way
+ * back. Every branch is driven by what classifyRel RECOGNISED in the path —
+ * `unclassified` never reaches here, because a path the store patterns do not
+ * match has no surface and is said to have none at the call site.
+ */
+export function surfaceLink(cls, { slug, sid, rel }) {
   switch (cls.surface) {
     case 'agent':
-      return cls.agentId ? a(routes.agent(slug, sid, cls.agentId), cls.agentId === 'main' ? 'main thread' : `agent ${shortId(cls.agentId, 10)}`) : unknown('no agentId in this path');
+      return cls.agentId && sid
+        ? a(withReturn(routes.agent(slug, sid, cls.agentId)), cls.agentId === 'main' ? 'main thread' : `agent ${shortId(cls.agentId, 10)}`)
+        : unknown(sid ? 'this path matches an agent shape but records no agentId' : 'a project-level path has no session to surface it under');
     case 'workflow':
-      return cls.runId ? a(routes.workflow(slug, sid, cls.runId), `workflow ${cls.runId}`) : unknown('no runId in this path');
+      return cls.runId && sid
+        ? a(withReturn(routes.workflow(slug, sid, cls.runId)), `workflow ${cls.runId}`)
+        : unknown(sid ? 'this path matches a workflow shape but records no runId' : 'a project-level path has no session to surface it under');
     case 'memory':
-      return a(routes.memory(slug, cls.name), `memory ${cls.name}`);
+      return cls.name
+        ? a(withReturn(routes.memory(slug, cls.name)), `memory ${cls.name}`)
+        : unknown('this path matches the memory shape but records no file name');
     case 'raw':
     default:
-      return a(routes.sessionFile(slug, sid, cls.fragmentRel ?? cls.name ?? ''), 'raw view only');
+      // The RECORDED rel, verbatim — `x` consumes the remainder of the hash,
+      // so any depth works. cls.name is the matched TAIL of a pattern
+      // (`tool-results/<name>`), never a path, and is deliberately not used.
+      return rel && sid
+        ? a(withReturn(routes.sessionFile(slug, sid, rel)), 'raw view')
+        : rel
+          ? a(withReturn(routes.projectFile(slug, rel)), 'raw view')
+          : unknown('this row records no session-relative path to open');
   }
+}
+
+/**
+ * A ledger path is a RECORDED tool input — usually an absolute working-tree
+ * path, which the store does not hold and this app therefore has no page for.
+ * Only a path that is ALREADY session-relative can be addressed by `…/x/`;
+ * turning an absolute path into one would need the store root, which no
+ * payload records. Returns the POSIX rel, or null (which the caller prints as
+ * `—` with the reason).
+ */
+export function sessionRelOf(recordedPath) {
+  const p = String(recordedPath ?? '').replace(/\\/g, '/');
+  if (!p) return null;
+  if (/^[A-Za-z]:\//.test(p) || p.startsWith('/') || p.startsWith('//')) return null;   // absolute
+  if (p.split('/').includes('..')) return null;                                          // escapes the session dir
+  return p;
 }
 
 function arrayCensus(list) {
@@ -328,11 +393,9 @@ function arrayCensus(list) {
 }
 
 function censusSection(title, obj, { slug, sid, prefix = '', linkKind = false } = {}) {
-  const sec = section(title);
   const entries = obj && typeof obj === 'object' ? Object.entries(obj) : [];
   if (!entries.length) {
-    sec.appendChild(unknown('not reported on this payload'));
-    return sec;
+    return disclosure(title, unknown('not reported on this payload'), { count: 'not reported' });
   }
   const t = h('table', { class: 'lens-table' }, h('thead', {}, h('tr', {}, h('th', { text: 'value' }), h('th', { class: 'lens-table__num', text: 'count' }), h('th', { text: '' }))));
   const tb = h('tbody');
@@ -341,11 +404,12 @@ function censusSection(title, obj, { slug, sid, prefix = '', linkKind = false } 
     tb.appendChild(h('tr', {},
       h('td', {}, h('code', { text: k })),
       h('td', { class: 'lens-table__num' }, n === null || n === undefined ? unknown('count not reported') : h('span', { text: fmtInt(n) })),
-      h('td', {}, linkKind || prefix ? a(routes.session(slug, sid, { k: `${prefix}${k}` }), 'show these') : null)));
+      h('td', {}, linkKind || prefix ? a(withReturn(routes.session(slug, sid, { k: `${prefix}${k}` })), 'show these') : null)));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
-  return sec;
+  // The count in the summary is the RECORDED number of distinct values, so
+  // the reader knows the size of the census without opening it.
+  return disclosure(title, tablewrap(t), { count: `${fmtInt(entries.length)} distinct` });
 }
 
 function imagesSection(images, { slug, sid }) {
@@ -368,7 +432,7 @@ function imagesSection(images, { slug, sid }) {
     tb.appendChild(h('tr', {}, h('td', {}, h('code', { text: src })), h('td', { class: 'lens-table__num', text: fmtInt(e.count) }), h('td', { class: 'lens-table__num', text: e.bytes ? fmtBytes(e.bytes) : '0' })));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   return sec;
 }
 
@@ -397,12 +461,12 @@ function spillsSection(spills, { slug, sid }) {
       h('td', { class: 'lens-table__num' }, sp.bytes === undefined ? unknown('size not reported') : h('span', { text: fmtBytes(sp.bytes) })),
       h('td', { text: sp.form ?? (refs[0]?.form ?? '') }, sp.form || refs[0]?.form ? null : unknown('reference form not reported')),
       h('td', {}, refs.length
-        ? refs.map((r) => a(routes.event(slug, sid, r.agentId ?? 'main', r.line, r.bi ?? null), `line ${fmtInt(r.line)}`))
+        ? refs.map((r) => a(withReturn(routes.event(slug, sid, r.agentId ?? 'main', r.line, r.bi ?? null)), `line ${fmtInt(r.line)}`))
         : h('span', { class: 'lens-note', text: 'not referenced from any transcript — still viewable (SPEC §8)' })),
-      h('td', {}, a(routes.sessionFile(slug, sid, rel), 'raw'))));
+      h('td', {}, a(withReturn(routes.sessionFile(slug, sid, rel)), 'raw'))));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   return sec;
 }
 
@@ -463,11 +527,11 @@ function problemsDrawer(problems, { slug, sid }) {
       h('td', {}, impacts === null ? unknown('this problem does not record an `affects` value') : h('span', { text: impacts })),
       h('td', { text: p.message ?? '' }),
       h('td', {}, p.file && p.line
-        ? a(routes.event(slug, sid, p.agentId ?? 'main', p.line, null), `${p.file}:${fmtInt(p.line)}`)
-        : p.file ? a(routes.sessionFile(slug, sid, p.file), p.file) : h('span', { text: '' }))));
+        ? a(withReturn(routes.event(slug, sid, p.agentId ?? 'main', p.line, null)), `${p.file}:${fmtInt(p.line)}`)
+        : p.file ? a(withReturn(routes.sessionFile(slug, sid, p.file)), p.file) : h('span', { text: '' }))));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   return sec;
 }
 
@@ -506,9 +570,12 @@ export async function renderRawFile(ctx) {
   const params = sid ? { slug, id: sid, rel } : { slug, rel };
   body.appendChild(h('div', { class: 'lens-x__tools' },
     a(apiUrl('/api/file', params), 'open the bytes directly', { target: '_blank', rel: 'noreferrer' }),
-    cls.surface === 'agent' && cls.agentId && sid ? a(routes.agent(slug, sid, cls.agentId), 'surfaced as an agent') : null,
-    cls.surface === 'workflow' && cls.runId && sid ? a(routes.workflow(slug, sid, cls.runId), 'surfaced as a workflow') : null,
-    cls.surface === 'memory' ? a(routes.memory(slug, cls.name), 'surfaced as memory') : null));
+    // ONE surface resolver, shared with the files ledger — the two used to
+    // spell the same three cases separately. A `raw` classification's surface
+    // IS this page, so it names itself rather than linking to itself.
+    cls.surface === 'raw'
+      ? h('span', { class: 'lens-x__surface', title: 'this raw view is the surface for this file class', text: `surfaced as: this raw view (${cls.class})` })
+      : h('span', { class: 'lens-x__surface' }, 'surfaced as: ', surfaceLink(cls, { slug, sid, rel }))));
 
   let res;
   try { res = await fetchRaw('/api/file', params, { rangeBytes: RAW_HEAD_BYTES, signal: ctx.signal }); }
@@ -535,7 +602,7 @@ export async function renderRawFile(ctx) {
     lines.forEach((text, i) => {
       const lineNo = i + 1;
       box.appendChild(h('div', { class: 'lens-raw__line' },
-        sid && cls.agentId ? a(routes.event(slug, sid, cls.agentId, lineNo, null), String(lineNo), { class: 'lens-raw__no' })
+        sid && cls.agentId ? a(withReturn(routes.event(slug, sid, cls.agentId, lineNo, null)), String(lineNo), { class: 'lens-raw__no' })
           : h('span', { class: 'lens-raw__no', text: String(lineNo) }),
         h('code', { class: 'lens-raw__text', text: truncate(text, 400) })));
     });

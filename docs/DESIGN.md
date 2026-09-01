@@ -52,6 +52,30 @@ against the file in any editor.
 
 1. **Crumb rail** — full chain to root; names + dim ids; last segment not a
    link; `↑` labelled with its destination.
+   When a **named view** is active (`?v=`), it is appended as the final,
+   non-link segment — "session 676bf186 / images" — so the header says which
+   of a level's views you are standing in without reading the tab strip. The
+   default view of every level carries no `?v` and therefore adds no segment.
+   Beside the rail the shell holds the document's one `<h1>`, written from the
+   crumb chain and visually hidden: the rail is the visible title, and a `nav`
+   cannot carry the heading.
+   When the page was drilled into from a list-like view, the rail also leads
+   with a **back control** — `← back to <where>`, e.g. "back to find results",
+   "back to session images". It is built from the `returnTo` query param the
+   drill link carried (an encoded hash, at most one level deep — building a
+   new one strips any already there, so a hash stays bounded), and the label
+   is read from that hash's ROUTE SHAPE alone, never from its content. The
+   control belongs to the shell, so every route has it identically; a crumb
+   whose destination *is* the remembered page carries the remembered query
+   instead of the stateless default.
+   The rail row also carries the **appearance control** — light / dark /
+   system, three states always visible, `aria-checked` on the chosen one. It
+   belongs to the shell, not to a render, so it survives every navigation. The
+   choice persists under `lens.theme` and is applied by a five-line `<head>`
+   bootstrap before the stylesheet, so a reload never flashes the other mode.
+   Absent choice = follow `prefers-color-scheme`. Both palettes are the same
+   design in two modes, never an inversion, and every text role clears 4.5:1
+   in both.
 2. **Scope sentence** — one generated sentence stating what the numbers
    below cover and by what rule the set was formed (templates per level;
    gains a clause when a filter — including `from`/`to` — is active). This
@@ -89,6 +113,15 @@ against the file in any editor.
    - `>200K on an unverified-tier model: N rows · SPEC §5 premiumUnknown`
    - `embedded sidechain: N foreign rows · SPEC §3`
    Unknown = `—` + reason; zero = `0`; never the same glyph.
+
+Below the content, the shell also carries a **footer**, on every page:
+global nav (store · find · audit · settings, the current one marked with
+`aria-current`) and the two facts that qualify every number above it —
+`PRICING_VERSION` and the index state (`index N of M sessions`, plus
+`— indexing…` while it builds). The footer never fetches: it prints the
+rate-table version already loaded at boot and whatever index state the last
+view to read `/api/index` recorded. Either fact unread renders `—` with its
+reason, never a zero.
 
 ## 2. Timelines — one grammar
 
@@ -191,7 +224,13 @@ sidecar), read/write/edit counts from tool names, **with the coverage
 denominator printed on the view** ("paths from 18,268 main-thread and
 21,445 agent tool calls; 20,292 agent tool results carry no path sidecar").
 `?v=images`: contact sheet (virtualized; tiles from byte counts, pixels on
-scroll; captions time · source · bytes).
+scroll; captions time · source · bytes). Twins are folded — one tile per
+distinct image, the coverage sentence stating both figures ("54 distinct
+images; 106 recorded appearances") — and a tile **opens a lightbox in place
+rather than navigating**: `role=dialog`, `[data-lens-layer]` so Escape closes
+it through the router's layer system, ←/→ over gallery order, the recorded
+facts + locator + the twin as a fact, and one `withReturn` link out to the raw
+event. **L4 `?v=images` mounts the same component over the same list.**
 
 ### L3 — turn. Default **orchestration**; `[`/`]` = prev/next turn.
 Layout: prompt card (expandable, verbatim) → lane Gantt → tree + timetable.
@@ -244,7 +283,13 @@ started/ended/wall, stop_reasons, tool histogram, MCP/skills attributions,
 structured output, journal result, sibling `peer` messages, and —
 when recorded — `isolation: worktree` + `worktreePath` (cross-referenced to
 workflowProgress `isolation`; annotated "path not on disk" when it no longer
-resolves, 9/9 here). An agent's `cwd` is deliberately not shown as a header
+resolves, 9/9 here). Those facts are **grouped** into five native disclosures
+— identity / lifecycle / model & effort / tools & output / provenance — open
+by default for the first three and collapsed for the last two, with one
+expand-all / collapse-all control above them. Grouping only: every fact is
+still the same recorded value with the same named source and the same unknown
+reason, and a fact the grouping does not name lands in `provenance` rather
+than off the page. An agent's `cwd` is deliberately not shown as a header
 fact (never a project signal — SPEC §2's phantom-project rule); it remains
 visible in `?v=raw` and L5. Strip above the timetable: tool spans
 (tool_use→tool_result by id; unmatched = tick+∅ with `toolDenialKind` when
@@ -257,7 +302,11 @@ virtualized raw-JSONL of the whole file, served by `/api/lines` windows
 `structuredPatch` hunks + `userModified` badge, image, attachment by kind,
 system by subtype, queue-op); full raw event JSON below with the addressed
 block highlighted (dotted `bi` grammar per SPEC §8; twins: `<i>.<j>` = block
-copy, `r` = sidecar, rendered once with the twin noted); tool_use ↔ result
+copy, `r` = sidecar, rendered once with the twin noted). The raw JSON sits
+behind a native disclosure, **collapsed by default** — the rendered block is
+what the reader addressed — and the choice persists under `lens.l5.raw.open`.
+A `tool_use` input past 30 recorded lines folds the same way, its summary
+stating the exact line count. tool_use ↔ result
 cross-links; `<persisted-output>` spill links (SPEC §8); `[`/`]` sibling
 blocks; copy-locator (1-based `file:line[.bi]`). Raw text is the default
 everywhere; "render markdown" is a per-row toggle that persists.
@@ -266,9 +315,17 @@ everywhere; "render markdown" is a per-row toggle that persists.
 Files ledger (every path incl. project-level memory files, bytes, lines,
 class, "surfaced as" link, raw link; ends `197 files · 197 classified · 0
 unclassified`). Events ledger (parsed → rendered → not-rendered, each
-not-rendered bucket enumerated and clickable). Censuses: per-type events,
-attachment kinds, images (count/bytes/source), sessionIds in file, models,
-spill files with their reference forms, expected-zero censuses (lost agents
+not-rendered bucket enumerated and clickable). Each files-ledger row carries
+an "in this app" cell: a recorded path INSIDE the session directory links to
+the surface that shows it (`…/x/<rel>`, or its agent / workflow / memory
+page); a recorded absolute working-tree path reads `—` with the reason, since
+deriving a session-relative path from it would need a store root no payload
+records. The ledger closes with how many of its recorded paths are
+addressable here. Censuses: per-type events, attachment kinds, sessionIds in
+file and models — each a native disclosure stating its distinct-value count,
+under one expand-all / collapse-all control — then images
+(count/bytes/source), spill files with their reference forms, expected-zero
+censuses (lost agents
 0 · torn lines 0), problems (Problem shape, SPEC §9 — `affects` drives an
 "impacts totals?" column, and a `where` column that links to the named
 session **only when the collapsed row has exactly one source** — this census
@@ -297,7 +354,13 @@ PRICING_VERSION + source, not by the equality). The "prove it" page.
 
 ### Settings — projects dir (validate + counts preview), pricing table
 (read-only: interval lists, PRICING_VERSION + both sources + retrieval
-date), cache info, keyboard sheet.
+date), cache info, **appearance**, keyboard sheet.
+
+The appearance block mirrors the header's control and states two facts: the
+recorded choice (`localStorage` `lens.theme`, this browser only) and the mode
+actually on screen with where it came from. When the choice is `system` and
+the browser reports no preference, the mode on screen is `—` with its reason —
+it is never inferred to be light.
 
 The projects-dir block prints **active** (what this instance is serving, with
 its provenance) and **saved in config.json** as two separate rows, plus a
@@ -318,7 +381,15 @@ both counts.
 ## 5. Keyboard
 `j/k` rows · `Enter` drill · `u` up (labelled) · `[`/`]` prev/next sibling
 (turn@L3, agent@L4, block@L5) · `/` find in scope · `\` raw JSON · `g0–g5`
-jump to level · `t` cycle views · `?` sheet.
+jump to level · `t` cycle views · `?` sheet · `Esc` close · `←`/`→` prev/next
+image **while the image lightbox is open** (scoped to that layer; it shadows
+nothing on the page).
+
+`u` takes the §1 back control when the page carries one — the recorded way
+back beats the tree parent — and is the labelled `↑` otherwise. `Esc` closes
+the top open layer (sheet, popover, panel) first, then any escape the view
+registered, and only with nothing left to close does it follow the back
+control. Neither key ever navigates when there is nothing to navigate to.
 
 ## 6. Cost transparency
 Every dollar figure is one component (`CostFigure`) and is a button →
@@ -367,6 +438,28 @@ instance. No config → probe `~/.claude/projects`; found → index
 immediately; not found → setup screen with dir field + validation preview
 (never an empty dashboard). Zip = the folder, no deps, no build. The app
 never writes into the store.
+
+**Typefaces ship with the folder or not at all.** The UI is a three-face
+system — a display face for headings, a chrome face for everything scanned, and
+Georgia for the one thing that is read (rendered markdown) — over the system
+mono that carries every figure, id, date and locator. Nothing is fetched from a
+font host: each face is declared `local()` first, then a `woff2` served by this
+server out of `web/fonts/`, which **ships empty by design** (its README names
+the four expected files). With that directory empty the `url()`s 404 and each
+family falls through to the system stack the app used before, at `font-display:
+swap` — so first paint never waits, no measure, `ch` width or size in the sheet
+depends on a downloaded face, and "zip the folder and it runs" still holds with
+or without the fonts in it.
+
+**Focus, motion, and what never moves.** Focus-visible is a 3px ring in the
+heading gold at a 3px offset, taking the shape of whatever it surrounds; it
+clears 4.5:1 against every ground in both modes. Motion is three durations and
+one curve: 180ms on control hovers, 380ms `cubic-bezier(.4,0,.2,1)` on the two
+overlays and the disclosure marker, 300ms on the appearance cross-fade (the
+ground fades, the inks snap — transitioning inherited text colour would repaint
+every node on a 2,000-node page). Nothing animates at rest: there is no
+keyframe animation in the app and every transition is entered from a pointer, a
+key or a click. `prefers-reduced-motion: reduce` removes all of it.
 
 ## 9. Deliberately excluded
 All scoring/clustering/classification/summarisation; relevance ranking;

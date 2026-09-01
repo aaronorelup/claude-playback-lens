@@ -10,7 +10,7 @@
  */
 
 import { kit } from '../lib/net.mjs';
-import { h, a, unknown, section, factList } from '../lib/dom.mjs';
+import { h, a, unknown, section, factList, tablewrap } from '../lib/dom.mjs';
 import { fmtInt, fmtDur, fmtLocalTime, toMs, shortId, truncate, spanProps } from '../lib/fmt.mjs';
 import { routes } from '../lib/links.mjs';
 import { page, errorCard, pendingCard, statHeader, mountCrumbs, handle404 } from '../lib/chrome.mjs';
@@ -314,7 +314,7 @@ function progressSection(progress, { slug, sid }) {
       h('td', {}, p.agentId ? a(routes.agent(slug, sid, p.agentId), 'agent') : unknown('no agentId on this entry'))));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   sec.appendChild(h('p', {
     class: 'lens-note',
     text: 'workflowProgress[].tokens is a context-size gauge, not usage (about 5.6× real output) and is only ever displayed labelled "final context size"; toolCalls counters are exact (SPEC §7). Billing comes from the transcripts.',
@@ -377,7 +377,7 @@ function agentsSection(agents, recon, { slug, sid, partial = true, journalKnown 
         h('td', { text: agentTags(ag).map((x) => x.text).join(' ') })));
     }
     t.appendChild(tb);
-    sec.appendChild(t);
+    sec.appendChild(tablewrap(t));
   }
 
   if (recon.onDiskNotInManifest.length) {
@@ -427,7 +427,7 @@ function journalSection(journal, recon, { slug, sid }) {
             : h('code', { text: truncate(safeStringify(res), 160) }))));
   });
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   if (recon.journal.running.length) {
     sec.appendChild(h('p', { class: 'lens-note', text: `${fmtInt(recon.journal.running.length)} agent(s) have a start with no result recorded.` }));
   }

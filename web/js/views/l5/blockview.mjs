@@ -3,9 +3,12 @@
 // bodies, the image block with its measured base64 length, the structuredPatch
 // sidecar, and the event-level fallbacks. Pure DOM building over one event.
 
-import { h, unknown, factList } from '../../lib/dom.mjs';
+import { h, unknown, factList, disclosure } from '../../lib/dom.mjs';
 import { fmtInt, fmtBytes, truncate } from '../../lib/fmt.mjs';
-import { textBody, safeStringify } from '../../lib/text.mjs';
+import { textBody, safeStringify, countLines } from '../../lib/text.mjs';
+
+/** Past this many recorded lines a tool_use input opens folded. */
+export const INPUT_FOLD_LINES = 30;
 import { copyLocator } from '../../lib/locator.mjs';
 import { apiUrl } from '../../lib/net.mjs';
 import { eventKind, recordedB64, attributeBlob, SERVABLE_MEDIA_TYPES } from '../../lib/blocks.mjs';
@@ -61,8 +64,22 @@ export function renderBlock(block, event, locators, { blocks = null, blobs = nul
         { label: 'name', value: node?.name ?? null, reason: 'no `name` key recorded', source: 'block' },
         { label: 'id', value: node?.id ?? null, reason: 'no `id` key recorded', source: 'block' },
       ]));
-      box.appendChild(h('h4', { class: 'lens-block__sub', text: 'input' }));
-      box.appendChild(h('pre', { class: 'lens-json', text: safeStringify(node?.input ?? null) }));
+      // The input is the tool call verbatim. Short ones print open; past
+      // INPUT_FOLD_LINES recorded lines it goes behind a disclosure whose
+      // summary states the EXACT line count, so the reader knows the size of
+      // what is folded before opening it (KAN-105 1.6).
+      const inputText = safeStringify(node?.input ?? null);
+      const inputLines = countLines(inputText);
+      const pre = h('pre', { class: 'lens-json', text: inputText });
+      if (inputLines > INPUT_FOLD_LINES) {
+        box.appendChild(disclosure('input', pre, {
+          className: 'lens-block__input',
+          count: `${fmtInt(inputLines)} recorded lines`,
+        }));
+      } else {
+        box.appendChild(h('h4', { class: 'lens-block__sub', text: 'input' }));
+        box.appendChild(pre);
+      }
       break;
     }
     case 'tool_result': {

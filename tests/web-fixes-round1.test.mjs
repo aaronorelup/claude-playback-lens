@@ -382,7 +382,12 @@ test('UI-4: rowsPane renders one {} locator per row from locatorHref', async () 
   await settle();
   const locators = node.querySelectorAll('.lens-rows__locator');
   assert.equal(locators.length, 3);
-  assert.equal(locators[1].getAttribute('href'), '#/p/a/s/b/a/main/e/2.0');
+  // KAN-105 pass 4: the `{}` drill now carries the timetable's own hash as
+  // `returnTo` so L5 can offer a labelled way back (D10). The addressed event
+  // is unchanged — the assertion is on the route, plus the return param.
+  const href2 = locators[1].getAttribute('href');
+  assert.ok(href2.startsWith('#/p/a/s/b/a/main/e/2.0'), `route preserved, got ${href2}`);
+  assert.match(href2, /[?&]returnTo=/);
 });
 
 /* ================================================================== *
@@ -1124,8 +1129,12 @@ test('R4-1: the non-empty rendering is unchanged — the table still comes BEFOR
   const sec = ctx.el.querySelectorAll('.lens-section')
     .find((s) => /agents in this run/.test(s.childNodes[0] ? s.childNodes[0].textContent : ''));
   assert.ok(sec, 'the agents section exists');
-  const kids = sec.childNodes.filter((n) => n.localName === 'table' || n.localName === 'p');
-  assert.equal(kids[0].localName, 'table', 'the table is first — hoisting the notes above it would reorder every live run');
+  // KAN-105 pass 4: every emitted table now sits inside div.lens-tablewrap so a
+  // wide census scrolls in its own box. The ORDER is what this test pins.
+  const kids = sec.childNodes.filter((n) => n.localName === 'div' || n.localName === 'table' || n.localName === 'p');
+  assert.equal(kids[0].localName, 'div', 'the table is first — hoisting the notes above it would reorder every live run');
+  assert.match(kids[0].getAttribute('class') || '', /lens-tablewrap/);
+  assert.equal(kids[0].childNodes[0].localName, 'table', 'the wrapper holds the table and nothing else');
   assert.match(kids[1].textContent, /no transcript in this directory/);
   assert.match(kids[1].textContent, /a444444444/);
 });

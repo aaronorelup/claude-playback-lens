@@ -32,56 +32,576 @@
    in `.lens-num`. Never style them alike.
    ========================================================================== */
 
-/* --------------------------------------------------------------------------
-   palette + scale
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   TYPEFACES — KAN-105 pass 6. Three faces, three jobs, ZERO network requests.
+
+     display   Zen Maru Gothic 700   headings only (negative tracking, gold)
+     chrome    Karla 400/600         everything you SCAN: nav, tabs, buttons,
+                                     pills, chips, labels, tables, footer
+     prose     Georgia               everything a person READS (.lens-md)
+     figures   system mono           IDs, dates, locators, code, every number
+
+   Constraint 3 forbids a web font fetched over the network: there is no
+   <link> to fonts.googleapis.com, no @import, and nothing here reaches past
+   this origin. Each face is declared twice over:
+
+     1. `local(...)` — if the reader already has the family installed it is
+        used with no request at all;
+     2. `url("fonts/…woff2")` — a file served by THIS server out of web/fonts/,
+        which ships empty (see web/fonts/README.md). Until the four latin-subset
+        woff2 files are placed there each url() 404s, the @font-face fails, and
+        the family falls through to the next entry in its stack.
+
+   THE UI IS DESIGNED ON THE FALLBACK STACKS. Zen Maru Gothic degrades to the
+   Karla stack and then to system-ui; Karla degrades to the same system stack
+   the app used before this pass. Nothing here is load-bearing for layout: the
+   size scale, the measures and every `ch` width belong to the mono/system
+   faces, which are always present. `font-display: swap` keeps first paint
+   immediate either way.
+   ========================================================================== */
+
+@font-face {
+  font-family: "Zen Maru Gothic";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: local("Zen Maru Gothic Medium"),
+       local("ZenMaruGothic-Medium"),
+       url("fonts/zen-maru-gothic-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Zen Maru Gothic";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local("Zen Maru Gothic Bold"),
+       local("ZenMaruGothic-Bold"),
+       url("fonts/zen-maru-gothic-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Karla";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("Karla Regular"),
+       local("Karla-Regular"),
+       url("fonts/karla-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Karla";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("Karla SemiBold"),
+       local("Karla-SemiBold"),
+       url("fonts/karla-600.woff2") format("woff2");
+}
+
+/* ==========================================================================
+   THEMING — three token layers (KAN-105 pass 1)
+
+     LAYER 1  --pc-* / --th-*   raw palette. The Tea House brand board
+                                (Brand Designs/Aaron Orelup/brand-board.html)
+                                is the sole source of truth for these VALUES.
+                                App light mode = the brand's DAY palette,
+                                app dark mode  = the brand's NIGHT palette.
+                                Roles the brand does not name are DERIVED here
+                                and every one carries a `derived:` comment.
+     LAYER 2  --lens-*          the app's semantic roles, expressed only as
+                                var() of layer 1. Defined ONCE, on bare :root.
+     LAYER 3  components        consume ONLY layer 2 (unchanged).
+
+   WHY LAYER 2 IS NOT REPEATED PER MODE: a custom property resolves at use
+   time, so redefining layer 1 under a mode selector re-points every layer-2
+   role with it. Layer 2 therefore has a complete definition on bare :root and
+   no colour is ever defined only inside a media block — the rule §2.3.1 of the
+   brief exists to enforce. The four mode blocks below redefine the SAME layer-1
+   token names, in this order:
+
+     :root                                                 complete LIGHT
+     @media (prefers-color-scheme: dark) :root:not([data-theme="light"])
+     :root[data-theme="dark"]                              explicit dark
+     :root[data-theme="light"]                             explicit light
+
+   `data-theme` is set by the 5-line bootstrap in index.html <head> (from
+   localStorage `lens.theme`, so there is no flash) and by web/js/lib/theme.mjs
+   at runtime. Absent attribute = follow the system.
+
+   BRAND LAW OBSERVED HERE: never pure #FFFFFF or #000000 as a surface; there
+   is deliberately NO status green and NO status red in this brand, so the four
+   semantic tones are derived from terracotta / gold / neutral and are told
+   apart by weight and by the label they always carry — never by hue alone.
+   ========================================================================== */
+
+/* ------------------------------- LAYER 1 — light (the brand's DAY palette) */
 
 :root {
-  /* surfaces — light, paper-ish, low chroma so data colour reads */
-  --lens-bg:            #f7f6f3;
-  --lens-surface:       #ffffff;
-  --lens-surface-2:     #f2f1ed;
-  --lens-surface-3:     #e8e6e0;
-  --lens-rule:          #ddd9d1;
-  --lens-rule-strong:   #c4bfb4;
+  color-scheme: light;
+
+  /* brand, verbatim (day column of the brand board) */
+  --pc-page:   #FBF3E8;
+  --pc-bg:     rgba(251, 243, 232, .97);
+  --pc-tile:   #F3E7D2;
+  --pc-hover:  #F4E9D8;
+  --pc-code:   #F0E5D2;
+  --pc-scrim:  rgba(251, 243, 232, .34);
+  --pc-head:   #BE7A10;
+  --pc-strong: #3A3A42;
+  --pc-body:   #4A4A50;
+  --pc-soft:   #6B5E52;
+  --pc-quiet:  #7A6C5D;
+  --pc-line:   #E2D5C0;
+  --pc-line2:  #D0BEA3;
+  --pc-accent: #A85E2B;
+  --pc-gold:   #B08A2E;
+  --pc-shadow: 0 30px 90px rgba(58, 58, 66, .22);
+
+  /* derived: the raised surface. The brand paints panels with --pc-bg, which
+     in day is the page colour at 97% — invisible against the ground. This app
+     stacks head / cards / tables / sticky table heads over the ground and needs
+     them to separate, so the page is lifted toward paper-white. Never #FFF. */
+  --pc-raise:  #FFFAF0;
+  /* derived: the deep well (progress + contribution tracks, subtotal and
+     footer rows). Between --pc-tile and --pc-line, held light enough that
+     11px meta text on it still clears 4.5:1. */
+  --pc-well:   #EFE3CE;
+  /* derived: --pc-soft / --pc-quiet are calibrated for 15-17px prose on the
+     page ground. This app sets 11-13px meta text on tinted fills, so both are
+     deepened one step; without it --pc-quiet lands at 4.0:1 on the zebra row. */
+  --pc-soft-deep:  #5E5348;
+  --pc-quiet-deep: #6E6154;
+  /* derived: the heading gold AS SMALL TEXT. --pc-head is the brand's day
+     gold for display sizes; measured against this app's grounds it is
+     3.19:1 on --pc-page and 2.77:1 on --pc-well, and every heading here is
+     13-19px, never display. Same hue and saturation (hsl 37 86%), lightness
+     dropped 40%->29%, which clears 4.5:1 on all six light grounds (page 5.38,
+     raise 5.69, hover 4.93, well 4.66, tile 4.84, code 4.75). Night needs no
+     deepening: --pc-head is already 8.9-11.0:1 there, so the two are the same
+     token value in dark. --pc-head itself is left at the brand value for the
+     display-size headings a later pass may place. */
+  --pc-head-ink:   #8A5A0A;
+  /* derived: the EYEBROW gold as small text. The brand reserves --pc-gold for
+     eyebrow labels; measured on this app's grounds the day value (#B08A2E) is
+     2.5-3.1:1 and every eyebrow here is 11px. Same gold family (hsl 43, the
+     olive side of the wheel, distinct from --pc-head's 38), lightness dropped
+     to 28%, which clears 4.5:1 on all eleven light grounds (page 5.99, raise
+     6.33, hover 5.49, well 5.19, tile 5.39, code 5.28, and the four tone tints
+     5.08-5.33). Night keeps the brand --pc-gold unchanged: it is already
+     6.20-7.69:1 there. */
+  --pc-gold-ink:   #74591B;
+
+  /* derived: accent as TEXT. --pc-accent is 4.44:1 on the page and 3.9:1 on
+     the tinted fills, so link text uses a deepened terracotta while fills,
+     borders, focus rings and marks keep the brand value exactly. */
+  --pc-accent-ink:  #905125;
+  /* derived: the brand names no visited state; a duller, darker terracotta. */
+  --pc-accent-seen: #7A4A2F;
+  /* derived: accent at ~11% over the ground — row hover, active cell, the
+     highlighted JSON node. */
+  --pc-accent-tint: #F2E3D3;
+  /* derived: ink ON an accent fill (primary button, active sigma). Paper in
+     day; the page ground in night, where the accent is light. */
+  --pc-on-accent:   #FFF8EC;
+
+  /* derived — the four semantic tones. The brand has no status green/red, so:
+       error = the terracotta family, deepened and reddened past --pc-accent
+       warn  = the gold family (--pc-head), deepened to hold 4.5:1 as text
+       note  = the neutral soft family — the quiet, explanatory tone
+       ok    = the neutral STRONG family — the same hue family as note, one
+               weight heavier, which is how the two stay tellable apart
+     Each tone has a text colour, a wash and a border. The banner/chip/badge
+     that carries them always names the tone in words, so no meaning here
+     rests on colour alone (constraint 4). */
+  --pc-tone-ok:         #3A3A42;
+  --pc-tone-ok-tint:    #E8E1D7;
+  --pc-tone-ok-line:    #A9A29A;
+  --pc-tone-warn:       #7A5C08;
+  --pc-tone-warn-tint:  #F3E3CC;
+  --pc-tone-warn-line:  #DDBA82;
+  --pc-tone-error:      #9A3A1A;
+  --pc-tone-error-tint: #F0E0CF;
+  --pc-tone-error-line: #D4A88E;
+  --pc-tone-note:       #695B49;
+  --pc-tone-note-tint:  #EEE6DB;
+  --pc-tone-note-line:  #D0BEA3;
+
+  /* derived — the 12 project-identity hues (DESIGN §2). A categorical set has
+     to stay distinguishable, so it spans the wheel, but every hue is pulled
+     warm and low-chroma to sit inside the brand: no pure green, no pure red,
+     nothing brighter than the terracotta. p2 IS the brand accent. These are
+     IDENTITY colours (which project / which kind / which JSON type), never
+     status — the no-status-green rule is about meaning, not about the wheel.
+     All 12 clear 4.5:1 on --pc-raise, because p1-p4 are also the JSON syntax
+     colours and p1-p10 are the kind-chip rules. */
+  --pc-h1:  #335771;   /* slate blue    */
+  --pc-h2:  #A85E2B;   /* terracotta — the brand accent */
+  --pc-h3:  #31684D;   /* pine, muted   */
+  --pc-h4:  #653974;   /* plum          */
+  --pc-h5:  #7F3945;   /* dusty rose    */
+  --pc-h6:  #746025;   /* olive gold    */
+  --pc-h7:  #2E616B;   /* teal          */
+  --pc-h8:  #783B63;   /* mulberry      */
+  --pc-h9:  #43632C;   /* moss          */
+  --pc-h10: #715438;   /* warm brown    */
+  --pc-h11: #3E4879;   /* indigo        */
+  --pc-h12: #864232;   /* sienna        */
+  --pc-h-overflow: #6E6659;   /* derived: warm grey, past the 12th project */
+
+  /* derived: the brand's --pc-shadow is a 90px marketing bloom. Same shadow
+     COLOUR, at this app's data density. */
+  --pc-shadow-ui: 0 1px 2px rgba(58, 58, 66, .10), 0 4px 14px rgba(58, 58, 66, .07);
+  /* derived: the brand's --pc-scrim is a page wash that LIGHTENS; the keyboard
+     sheet needs a backdrop that dims what is behind it. Built from --th-ink. */
+  --pc-scrim-modal: rgba(58, 58, 66, .32);
+  /* derived: the timeline brush — the accent at wash strength. */
+  --pc-brush: rgba(168, 94, 43, .14);
+  /* derived: hover filters. On a light ground a hover DARKENS; on a dark
+     ground the same filter would sink the mark into the page, so night
+     lightens instead. Numbers, not colours. */
+  --pc-hover-brightness: .82;
+  --pc-chip-brightness:  .97;
+}
+
+/* Blossom — mode-independent by design. Decoration only: never text, never a
+   resting surface, ≤2 places app-wide (brand rule). Pass 1 places NONE of them:
+   ::selection takes --pc-line2, exactly as the brand board does. Both pink
+   budget slots are left unspent for the aesthetic pass. */
+:root {
+  --th-blossom:      #F7C9D4;
+  --th-blossom-deep: #F0A6B8;
+  --th-petal:        #F7B7C8;
+  --th-ink:          #3A3A42;
+}
+
+/* ---------- LAYER 1 — dark (the brand's NIGHT palette), system preference */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --pc-page:   #101220;
+    --pc-bg:     rgba(21, 23, 38, .96);
+    --pc-tile:   #201F2C;
+    --pc-hover:  #222130;
+    --pc-code:   #222130;
+    --pc-scrim:  rgba(8, 9, 18, .44);
+    --pc-head:   #F0C06A;
+    --pc-strong: #F2E7D5;
+    --pc-body:   #C9BCA9;
+    --pc-soft:   #9C917F;
+    --pc-quiet:  #8E8375;
+    --pc-line:   #302E3E;
+    --pc-line2:  #4A445A;
+    --pc-accent: #E2795C;
+    --pc-gold:   #C9A227;
+    --pc-shadow: 0 34px 100px rgba(0, 0, 0, .6);
+
+    --pc-raise:  #151726;   /* derived: --pc-bg composited opaque over --pc-page */
+    --pc-well:   #262536;   /* derived: one step above --pc-tile, under --pc-line */
+    --pc-soft-deep:  #A79C8A;   /* derived: lifted, not deepened — see the light block */
+    --pc-quiet-deep: #978D80;
+    --pc-head-ink:   #F0C06A;   /* derived: night gold is already 8.9-11.0:1 — the brand value, unchanged */
+    --pc-gold-ink:   #C9A227;   /* derived: night eyebrow gold is already 6.2-7.7:1 — the brand value, unchanged */
+
+    --pc-accent-ink:  #E2795C;   /* derived: night terracotta is already 6.0:1 */
+    --pc-accent-seen: #C9917E;
+    --pc-accent-tint: #2D2028;
+    --pc-on-accent:   #151726;
+
+    --pc-tone-ok:         #F2E7D5;
+    --pc-tone-ok-tint:    #26262F;
+    --pc-tone-ok-line:    #6A6768;
+    --pc-tone-warn:       #EFC172;
+    --pc-tone-warn-tint:  #2A2624;
+    --pc-tone-warn-line:  #6E5B3F;
+    --pc-tone-error:      #F08A6A;
+    --pc-tone-error-tint: #30222A;
+    --pc-tone-error-line: #6F403B;
+    --pc-tone-note:       #B1A691;
+    --pc-tone-note-tint:  #21212B;
+    --pc-tone-note-line:  #4A445A;
+
+    /* derived: the same 12 hues, lifted in lightness and pulled down in
+       chroma. Night has to GLOW warm rather than go grey, so the warm half
+       keeps its saturation and the cool half loses some. */
+    --pc-h1:  #86AECB;
+    --pc-h2:  #E2795C;
+    --pc-h3:  #84C2A3;
+    --pc-h4:  #C195D0;
+    --pc-h5:  #D4919C;
+    --pc-h6:  #D5BF7B;
+    --pc-h7:  #87BEC9;
+    --pc-h8:  #D194BD;
+    --pc-h9:  #A3C889;
+    --pc-h10: #D0AD8B;
+    --pc-h11: #9BA5D4;
+    --pc-h12: #D99C8C;
+    --pc-h-overflow: #A79B88;
+
+    /* derived: a shadow reads as grime on a dark ground, so the depth cue is a
+       LIGHTENED hairline ring (the first layer) and the cast is nearly gone. */
+    --pc-shadow-ui: 0 0 0 1px rgba(242, 231, 213, .07), 0 6px 22px rgba(0, 0, 0, .5);
+    --pc-scrim-modal: rgba(8, 9, 18, .62);
+    --pc-brush: rgba(226, 121, 92, .22);
+    --pc-hover-brightness: 1.22;
+    --pc-chip-brightness:  1.10;
+  }
+}
+
+/* ------------------- LAYER 1 — dark, chosen explicitly (wins over system) */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --pc-page:   #101220;
+  --pc-bg:     rgba(21, 23, 38, .96);
+  --pc-tile:   #201F2C;
+  --pc-hover:  #222130;
+  --pc-code:   #222130;
+  --pc-scrim:  rgba(8, 9, 18, .44);
+  --pc-head:   #F0C06A;
+  --pc-strong: #F2E7D5;
+  --pc-body:   #C9BCA9;
+  --pc-soft:   #9C917F;
+  --pc-quiet:  #8E8375;
+  --pc-line:   #302E3E;
+  --pc-line2:  #4A445A;
+  --pc-accent: #E2795C;
+  --pc-gold:   #C9A227;
+  --pc-shadow: 0 34px 100px rgba(0, 0, 0, .6);
+
+  --pc-raise:  #151726;
+  --pc-well:   #262536;
+  --pc-soft-deep:  #A79C8A;
+  --pc-quiet-deep: #978D80;
+  --pc-head-ink:   #F0C06A;
+  --pc-gold-ink:   #C9A227;
+
+  --pc-accent-ink:  #E2795C;
+  --pc-accent-seen: #C9917E;
+  --pc-accent-tint: #2D2028;
+  --pc-on-accent:   #151726;
+
+  --pc-tone-ok:         #F2E7D5;
+  --pc-tone-ok-tint:    #26262F;
+  --pc-tone-ok-line:    #6A6768;
+  --pc-tone-warn:       #EFC172;
+  --pc-tone-warn-tint:  #2A2624;
+  --pc-tone-warn-line:  #6E5B3F;
+  --pc-tone-error:      #F08A6A;
+  --pc-tone-error-tint: #30222A;
+  --pc-tone-error-line: #6F403B;
+  --pc-tone-note:       #B1A691;
+  --pc-tone-note-tint:  #21212B;
+  --pc-tone-note-line:  #4A445A;
+
+  --pc-h1:  #86AECB;
+  --pc-h2:  #E2795C;
+  --pc-h3:  #84C2A3;
+  --pc-h4:  #C195D0;
+  --pc-h5:  #D4919C;
+  --pc-h6:  #D5BF7B;
+  --pc-h7:  #87BEC9;
+  --pc-h8:  #D194BD;
+  --pc-h9:  #A3C889;
+  --pc-h10: #D0AD8B;
+  --pc-h11: #9BA5D4;
+  --pc-h12: #D99C8C;
+  --pc-h-overflow: #A79B88;
+
+  --pc-shadow-ui: 0 0 0 1px rgba(242, 231, 213, .07), 0 6px 22px rgba(0, 0, 0, .5);
+  --pc-scrim-modal: rgba(8, 9, 18, .62);
+  --pc-brush: rgba(226, 121, 92, .22);
+  --pc-hover-brightness: 1.22;
+  --pc-chip-brightness:  1.10;
+}
+
+/* ------ LAYER 1 — light, chosen explicitly (so the toggle works BOTH ways
+   under a system that prefers dark) */
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --pc-page:   #FBF3E8;
+  --pc-bg:     rgba(251, 243, 232, .97);
+  --pc-tile:   #F3E7D2;
+  --pc-hover:  #F4E9D8;
+  --pc-code:   #F0E5D2;
+  --pc-scrim:  rgba(251, 243, 232, .34);
+  --pc-head:   #BE7A10;
+  --pc-strong: #3A3A42;
+  --pc-body:   #4A4A50;
+  --pc-soft:   #6B5E52;
+  --pc-quiet:  #7A6C5D;
+  --pc-line:   #E2D5C0;
+  --pc-line2:  #D0BEA3;
+  --pc-accent: #A85E2B;
+  --pc-gold:   #B08A2E;
+  --pc-shadow: 0 30px 90px rgba(58, 58, 66, .22);
+
+  --pc-raise:  #FFFAF0;
+  --pc-well:   #EFE3CE;
+  --pc-soft-deep:  #5E5348;
+  --pc-quiet-deep: #6E6154;
+  /* derived: the heading gold AS SMALL TEXT. --pc-head is the brand's day
+     gold for display sizes; measured against this app's grounds it is
+     3.19:1 on --pc-page and 2.77:1 on --pc-well, and every heading here is
+     13-19px, never display. Same hue and saturation (hsl 37 86%), lightness
+     dropped 40%->29%, which clears 4.5:1 on all six light grounds (page 5.38,
+     raise 5.69, hover 4.93, well 4.66, tile 4.84, code 4.75). Night needs no
+     deepening: --pc-head is already 8.9-11.0:1 there, so the two are the same
+     token value in dark. --pc-head itself is left at the brand value for the
+     display-size headings a later pass may place. */
+  --pc-head-ink:   #8A5A0A;
+  --pc-gold-ink:   #74591B;   /* derived — see the bare :root block */
+
+  --pc-accent-ink:  #905125;
+  --pc-accent-seen: #7A4A2F;
+  --pc-accent-tint: #F2E3D3;
+  --pc-on-accent:   #FFF8EC;
+
+  --pc-tone-ok:         #3A3A42;
+  --pc-tone-ok-tint:    #E8E1D7;
+  --pc-tone-ok-line:    #A9A29A;
+  --pc-tone-warn:       #7A5C08;
+  --pc-tone-warn-tint:  #F3E3CC;
+  --pc-tone-warn-line:  #DDBA82;
+  --pc-tone-error:      #9A3A1A;
+  --pc-tone-error-tint: #F0E0CF;
+  --pc-tone-error-line: #D4A88E;
+  --pc-tone-note:       #695B49;
+  --pc-tone-note-tint:  #EEE6DB;
+  --pc-tone-note-line:  #D0BEA3;
+
+  --pc-h1:  #335771;
+  --pc-h2:  #A85E2B;
+  --pc-h3:  #31684D;
+  --pc-h4:  #653974;
+  --pc-h5:  #7F3945;
+  --pc-h6:  #746025;
+  --pc-h7:  #2E616B;
+  --pc-h8:  #783B63;
+  --pc-h9:  #43632C;
+  --pc-h10: #715438;
+  --pc-h11: #3E4879;
+  --pc-h12: #864232;
+  --pc-h-overflow: #6E6659;
+
+  --pc-shadow-ui: 0 1px 2px rgba(58, 58, 66, .10), 0 4px 14px rgba(58, 58, 66, .07);
+  --pc-scrim-modal: rgba(58, 58, 66, .32);
+  --pc-brush: rgba(168, 94, 43, .14);
+  --pc-hover-brightness: .82;
+  --pc-chip-brightness:  .97;
+}
+
+/* ------------------------------------------------------------------------
+   LAYER 2 — the app's semantic roles + the (mode-independent) scale.
+   Names here are FROZEN: 268 CSS rules and 511 JS call sites depend on them.
+   Add; never rename.
+   ------------------------------------------------------------------------ */
+
+:root {
+  /* surfaces — paper-ish, low chroma so data colour reads */
+  --lens-bg:            var(--pc-page);
+  --lens-surface:       var(--pc-raise);
+  --lens-surface-2:     var(--pc-hover);
+  --lens-surface-3:     var(--pc-well);
+  --lens-rule:          var(--pc-line);
+  --lens-rule-strong:   var(--pc-line2);
 
   /* ink */
-  --lens-ink:           #1c1a17;
-  --lens-ink-dim:       #5d574d;
-  --lens-ink-faint:     #8d857a;
+  --lens-ink:           var(--pc-body);
+  --lens-ink-strong:    var(--pc-strong);   /* headings/titles — placed by a later pass */
+  --lens-ink-dim:       var(--pc-soft-deep);
+  --lens-ink-faint:     var(--pc-quiet-deep);
+  --lens-head:          var(--pc-head-ink); /* the brand's heading gold, at text sizes (pass 2) */
+  --lens-eyebrow:       var(--pc-gold-ink); /* the brand's EYEBROW gold, at text sizes (pass 6) */
 
   /* accents */
-  --lens-accent:        #b4531f;   /* the one identity colour */
-  --lens-accent-soft:   #f4e7de;
-  --lens-link:          #14538a;
-  --lens-link-visited:  #4a3b7a;
-  --lens-ok:            #1f6b3a;
-  --lens-ok-soft:       #e3f0e6;
-  --lens-warn:          #8a6100;
-  --lens-warn-soft:     #faf0d6;
-  --lens-error:         #a01e21;
-  --lens-error-soft:    #fae4e3;
-  --lens-note:          #3c5a72;
-  --lens-note-soft:     #e7eef4;
+  --lens-accent:        var(--pc-accent);   /* the one identity colour */
+  --lens-accent-soft:   var(--pc-accent-tint);
+  --lens-on-accent:     var(--pc-on-accent);
+  --lens-accent-ink:    var(--pc-accent-ink);   /* the accent used as TEXT — see --pc-accent-ink */
+  --lens-link:          var(--pc-accent-ink);
+  --lens-link-visited:  var(--pc-accent-seen);
+  --lens-ok:            var(--pc-tone-ok);
+  --lens-ok-soft:       var(--pc-tone-ok-tint);
+  --lens-ok-line:       var(--pc-tone-ok-line);
+  --lens-warn:          var(--pc-tone-warn);
+  --lens-warn-soft:     var(--pc-tone-warn-tint);
+  --lens-warn-line:     var(--pc-tone-warn-line);
+  --lens-error:         var(--pc-tone-error);
+  --lens-error-soft:    var(--pc-tone-error-tint);
+  --lens-error-line:    var(--pc-tone-error-line);
+  --lens-note:          var(--pc-tone-note);
+  --lens-note-soft:     var(--pc-tone-note-tint);
+  --lens-note-line:     var(--pc-tone-note-line);
+
+  /* Blossom, as a layer-2 role so layer 3 never reaches into --th-* directly.
+     Brand law: decoration only — never text, never a resting surface, ≤2
+     places app-wide. Pass 6 spends ONE of the two slots, on the appearance
+     control's hover (§ "the appearance control" below); pink at rest is 0%. */
+  --lens-blossom:       var(--th-blossom);
+  --lens-on-blossom:    var(--th-ink);
 
   /* project identity — 12 stable hues + grey overflow (DESIGN §2) */
-  --lens-p1:  #3b6ea5;
-  --lens-p2:  #b4531f;
-  --lens-p3:  #2f7d5c;
-  --lens-p4:  #7a4b9c;
-  --lens-p5:  #a8323f;
-  --lens-p6:  #856c1c;
-  --lens-p7:  #2b7f8f;
-  --lens-p8:  #9a4a72;
-  --lens-p9:  #4c6b2f;
-  --lens-p10: #6c5340;
-  --lens-p11: #3f5f9e;
-  --lens-p12: #8c4f2b;
-  --lens-p-overflow: #9b968c;
+  --lens-p1:  var(--pc-h1);
+  --lens-p2:  var(--pc-h2);
+  --lens-p3:  var(--pc-h3);
+  --lens-p4:  var(--pc-h4);
+  --lens-p5:  var(--pc-h5);
+  --lens-p6:  var(--pc-h6);
+  --lens-p7:  var(--pc-h7);
+  --lens-p8:  var(--pc-h8);
+  --lens-p9:  var(--pc-h9);
+  --lens-p10: var(--pc-h10);
+  --lens-p11: var(--pc-h11);
+  --lens-p12: var(--pc-h12);
+  --lens-p-overflow: var(--pc-h-overflow);
 
-  /* type */
-  --lens-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-               "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  /* The SECOND name for the same 12 roles. views/l0.mjs builds its project
+     colours as `var(--lens-proj-N, <hex>)` and views/l1|l2.mjs their turn
+     marks as `var(--lens-mark, <hex>)` — tokens the stylesheet never defined,
+     so the hardcoded fallback always won and the L0 day bands, the project
+     legend, the project cells and the L1/L2 turn marks were drawn in a cool
+     blue/green/red palette that belongs to no theme and changed with neither.
+     Defining the names here is CSS-only (no JS touched, nothing renamed) and
+     puts every one of those marks on the same 12 identity hues as the
+     timeline component, in both modes. */
+  --lens-proj-1:  var(--pc-h1);
+  --lens-proj-2:  var(--pc-h2);
+  --lens-proj-3:  var(--pc-h3);
+  --lens-proj-4:  var(--pc-h4);
+  --lens-proj-5:  var(--pc-h5);
+  --lens-proj-6:  var(--pc-h6);
+  --lens-proj-7:  var(--pc-h7);
+  --lens-proj-8:  var(--pc-h8);
+  --lens-proj-9:  var(--pc-h9);
+  --lens-proj-10: var(--pc-h10);
+  --lens-proj-11: var(--pc-h11);
+  --lens-proj-12: var(--pc-h12);
+  --lens-proj-overflow: var(--pc-h-overflow);
+
+  /* L1/L2 timeline marks, same story. mark = a recorded turn (the timeline's
+     own default span hue), preamble/underline = the neutral, overhang = teal,
+     marker = the gold of the identity set. */
+  --lens-mark:      var(--pc-h1);
+  --lens-preamble:  var(--pc-h-overflow);
+  --lens-underline: var(--pc-quiet-deep);
+  --lens-overhang:  var(--pc-h7);
+  --lens-marker:    var(--pc-h6);
+  --lens-agent:     var(--pc-h4);   /* agent spans on the L2 timeline */
+
+  /* type — three faces plus the figures face (pass 6). --lens-font keeps its
+     name and its job (the app default); Karla is prepended to the SAME system
+     stack it already carried, so a machine without Karla renders exactly what
+     this app rendered before. --lens-font-display and --lens-font-prose are
+     new roles, not renames. */
+  --lens-font-ui: Karla, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+               Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --lens-font: var(--lens-font-ui);
+  --lens-font-display: "Zen Maru Gothic", var(--lens-font-ui);
+  --lens-font-prose: Georgia, "Times New Roman", serif;
   --lens-mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas,
                "Liberation Mono", monospace;
 
@@ -92,6 +612,13 @@
   --lens-fs-lg:  19px;
   --lens-fs-xl:  25px;
 
+  /* the reading scale, which is NOT the UI scale: brand spec is Georgia at
+     15.5-17px / 1.68 over a ≤620px measure. It applies to rendered markdown
+     only — recorded raw text stays mono at 78ch, because it is evidence. */
+  --lens-fs-prose:      15.5px;
+  --lens-lh-prose:      1.68;
+  --lens-measure-prose: 620px;
+
   --lens-sp-1: 2px;
   --lens-sp-2: 4px;
   --lens-sp-3: 8px;
@@ -99,8 +626,52 @@
   --lens-sp-5: 18px;
   --lens-sp-6: 28px;
 
+  /* THE CONTENT COLUMN (KAN-105 2.3.3). One measure, shared by every band:
+     the crumb rail, the scope sentence, the stat header, the banner slot, the
+     content and the footer. --lens-gutter is a PADDING, not a margin, so the
+     head's bottom rule and the foot's top rule stay full-bleed while their
+     content lines up with the column — the app used to sit pinned to the left
+     edge on anything wider than 1680px. Below that width the gutter collapses
+     to --lens-sp-5 and nothing moves. */
+  --lens-measure:       1680px;
+  --lens-measure-inner: calc(var(--lens-measure) - 2 * var(--lens-sp-5));
+  --lens-gutter:        max(var(--lens-sp-5), calc((100% - var(--lens-measure-inner)) / 2));
+
+  /* SHAPE (pass 6) — the brand's radius table, mapped onto a data-dense app.
+     --lens-radius keeps its name, its 3px value and its job: it is the DATA
+     radius, on tables, timetables, timelines, scroll boxes and the tight
+     boxes that hold rows. The four roles below are the brand's, and they are
+     spent only where the brand spends them.
+
+       pill    999px  every button, chip, tag, toggle, tab and segmented control
+       float   24px   surfaces that genuinely FLOAT over the page — the statbar
+                      contribution panel, the cost panel, the keyboard sheet,
+                      the lightbox panel, the timeline info popover
+       row     10px   list-row hovers and small readouts
+       code     8px   fenced code blocks and preformatted spills
+       inline   4px   inline code, kbd, and the focus ring
+       (0)            media wells: the lightbox well is the mandated square. */
   --lens-radius: 3px;
-  --lens-shadow: 0 1px 2px rgba(28, 26, 23, .10), 0 4px 14px rgba(28, 26, 23, .07);
+  --lens-radius-pill:   999px;
+  --lens-radius-float:  24px;
+  --lens-radius-row:    10px;
+  --lens-radius-code:   8px;
+  --lens-radius-inline: 4px;
+
+  /* MOTION (pass 6). Structural moves take the brand curve; hovers are a flat
+     180ms; the appearance change is a 300ms cross-fade. NOTHING in this sheet
+     animates at rest — there is no keyframe animation anywhere in the app, and
+     every transition below is entered from a user action. */
+  --lens-ease-move: cubic-bezier(.4, 0, .2, 1);
+  --lens-dur-move:  380ms;
+  --lens-dur-hover: 180ms;
+  --lens-dur-theme: 300ms;
+
+  --lens-shadow: var(--pc-shadow-ui);
+  --lens-scrim:  var(--pc-scrim-modal);
+  --lens-brush:  var(--pc-brush);
+  --lens-hover-brightness: var(--pc-hover-brightness);
+  --lens-chip-brightness:  var(--pc-chip-brightness);
 }
 
 * { box-sizing: border-box; }
@@ -118,15 +689,45 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--lens-link); text-decoration: none; }
+/* The appearance cross-fade (pass 6, brand: "mode cross-fade 300ms"). It is
+   deliberately BACKGROUND ONLY and deliberately only on the two root boxes.
+   Transitioning `color` here would animate an inherited value, which forces a
+   repaint of every text node on the page — measured on the L0 store page
+   (2,300+ nodes) that is the difference between a clean swap and a visible
+   crawl. The inks therefore snap while the ground fades, which is what a lamp
+   coming on looks like anyway. Killed outright under prefers-reduced-motion. */
+html, body { transition: background-color var(--lens-dur-theme) ease; }
+
+/* the brand board's own selection treatment — a heavy rule, not a hue */
+::selection { background: var(--lens-rule-strong); color: var(--lens-ink); }
+
+a { color: var(--lens-link); text-decoration: none; text-underline-offset: 3px; }
 a:hover { text-decoration: underline; }
+
+/* THE FOCUS RING (brand ship checklist): 3px solid the heading gold, offset 3,
+   visible in both modes. Measured against every ground it can land on it is
+   5.38:1 (day, page) to 11.03:1 (night, page) and never below 4.56:1 — a UI
+   component needs 3:1, so it clears with room. The 3px offset means the ring's
+   adjacent colour is always the GROUND, never the control's own fill.
+
+   The ring must follow the shape it is drawn around, so the brand's 4px ring
+   corner is a SEPARATE rule wrapped in `:where()`. `:where()` contributes
+   nothing to specificity, leaving that rule at exactly (0,1,0) — the same
+   weight as a class — so every pill, panel and card declared later in this
+   file keeps its own radius while focused, and only a focusable with no shape
+   of its own (a bare link, a plain cell) takes the 4px. Written as a plain
+   `a:focus-visible` it scored (0,1,1), out-weighted `.lens-tabs__tab`, and
+   squared every pill in the app the moment it was tabbed to. */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--lens-accent);
-  outline-offset: 1px;
+  outline: 3px solid var(--lens-head);
+  outline-offset: 3px;
+}
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
+  border-radius: var(--lens-radius-inline);
 }
 
 code, kbd, pre, .lens-code, .lens-mono { font-family: var(--lens-mono); font-size: .95em; }
@@ -155,29 +756,67 @@ code, kbd, pre, .lens-code, .lens-mono { font-family: var(--lens-mono); font-siz
   z-index: 20;
   background: var(--lens-surface);
   border-bottom: 1px solid var(--lens-rule-strong);
-  padding: var(--lens-sp-3) var(--lens-sp-5) 0;
+  padding: var(--lens-sp-3) var(--lens-gutter) 0;
 }
 
 .lens-content {
   flex: 1;
-  padding: var(--lens-sp-5);
-  max-width: 1680px;
+  padding: var(--lens-sp-5) var(--lens-gutter);
   width: 100%;
 }
 .lens-content:focus { outline: none; }
 
-.lens-banners:not(:empty) { padding: var(--lens-sp-3) var(--lens-sp-5) 0; }
+.lens-banners:not(:empty) { padding: var(--lens-sp-3) var(--lens-gutter) 0; }
+.lens-reload { padding-inline: var(--lens-gutter); }
 
+/* the footer (D7): global nav on the left, the two qualifying facts on the
+   right, one hairline above. lib/footer.mjs builds it once into the shell. */
 .lens-foot {
   border-top: 1px solid var(--lens-rule);
-  padding: var(--lens-sp-3) var(--lens-sp-5);
+  padding: var(--lens-sp-3) var(--lens-gutter);
   color: var(--lens-ink-faint);
   font-size: var(--lens-fs-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lens-sp-2) var(--lens-sp-5);
 }
+.lens-foot__nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-2) var(--lens-sp-4);
+}
+.lens-foot__link { color: var(--lens-link); }
+/* where the reader is standing — weight and a rule, never colour alone */
+.lens-foot__link[aria-current="page"] {
+  color: var(--lens-ink);
+  font-weight: 600;
+  border-bottom: 1px solid var(--lens-accent);
+}
+.lens-foot__meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lens-sp-2) var(--lens-sp-4);
+  color: var(--lens-ink-faint);
+  font-size: var(--lens-fs-xs);
+}
+.lens-foot__fact { font-family: var(--lens-mono); white-space: nowrap; }
 
 /* --------------------------------------------------------------------------
    band 1 — crumb rail
    -------------------------------------------------------------------------- */
+
+/* the rail row: crumbs on the left, the shell's own controls on the right */
+.lens-head__rail {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lens-sp-4);
+}
+.lens-head__rail > .lens-crumbs { flex: 1 1 auto; min-width: 0; }
 
 .lens-crumbs {
   display: flex;
@@ -185,6 +824,34 @@ code, kbd, pre, .lens-code, .lens-mono { font-family: var(--lens-mono); font-siz
   gap: var(--lens-sp-3);
   font-size: var(--lens-fs-sm);
   min-height: 20px;
+}
+
+/* appearance control — three states, always all three visible (lib/theme.mjs) */
+.lens-theme {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--lens-sp-2);
+  flex: 0 0 auto;
+  font-size: var(--lens-fs-sm);
+}
+.lens-theme__label { color: var(--lens-ink-faint); }
+.lens-theme__btn {
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  color: var(--lens-ink-dim);
+  font: inherit;
+  font-size: var(--lens-fs-sm);
+  padding: 0 var(--lens-sp-3);
+  cursor: pointer;
+}
+.lens-theme__btn:hover { background: var(--lens-surface-2); }
+/* the chosen state carries weight and a fill, never colour alone */
+.lens-theme__btn.is-active {
+  background: var(--lens-accent);
+  border-color: var(--lens-accent);
+  color: var(--lens-on-accent);
+  font-weight: 600;
 }
 
 .lens-crumbs__up {
@@ -249,7 +916,13 @@ code, kbd, pre, .lens-code, .lens-mono { font-family: var(--lens-mono); font-siz
   cursor: pointer;
 }
 .lens-scope__sigma-btn.is-active,
-.lens-vtable__sigma.is-active { background: var(--lens-accent); color: #fff; }
+.lens-vtable__sigma.is-active { background: var(--lens-accent); color: var(--lens-on-accent); }
+/* Both segmented groups clip to their own rounded box (`overflow: hidden`, so
+   the ends stay pill-shaped), which would swallow an outward focus ring
+   whole. The ring is drawn INSIDE the segment instead — same 3px, same gold,
+   always visible. */
+.lens-scope__sigma-btn:focus-visible,
+.lens-vtable__sigma:focus-visible { outline-offset: -3px; }
 
 /* --------------------------------------------------------------------------
    band 3 — stat header
@@ -264,7 +937,17 @@ code, kbd, pre, .lens-code, .lens-mono { font-family: var(--lens-mono); font-siz
   gap: var(--lens-sp-2);
 }
 
-.lens-statbar__sep { color: var(--lens-rule-strong); align-self: center; }
+/* A group divider between stat cells. It draws a RULE, not a glyph: the "|"
+   character statbar.mjs used to print sat at ~1.9:1 on the band and read as a
+   value in the row of values. The element carries no text at all now, so the
+   border IS the separator and it can never be mistaken for a figure. */
+.lens-statbar__sep {
+  align-self: stretch;
+  width: 0;
+  flex: 0 0 auto;
+  border-left: 1px solid var(--lens-rule);
+  margin: var(--lens-sp-2) var(--lens-sp-1);
+}
 
 .lens-statbar__cell {
   display: flex;
@@ -330,7 +1013,7 @@ code, kbd, pre, .lens-code, .lens-mono { font-family: var(--lens-mono); font-siz
   border: 1px solid var(--lens-rule-strong); background: var(--lens-surface);
   border-radius: var(--lens-radius); font: inherit; padding: 0 var(--lens-sp-3); cursor: pointer;
 }
-.lens-statbar__group-btn.is-active { background: var(--lens-accent); border-color: var(--lens-accent); color: #fff; }
+.lens-statbar__group-btn.is-active { background: var(--lens-accent); border-color: var(--lens-accent); color: var(--lens-on-accent); }
 
 /* contribution panels — share bars, ranked, with drill links */
 .lens-contrib { list-style: none; margin: 0; padding: 0; }
@@ -371,10 +1054,10 @@ code, kbd, pre, .lens-code, .lens-mono { font-family: var(--lens-mono); font-siz
   background: var(--lens-surface-2);
   color: var(--lens-ink-dim);
 }
-.lens-chip--note  { background: var(--lens-note-soft);  border-color: #c3d3df; color: var(--lens-note); }
-.lens-chip--warn  { background: var(--lens-warn-soft);  border-color: #e0cd92; color: var(--lens-warn); }
-.lens-chip--error { background: var(--lens-error-soft); border-color: #e3b0ae; color: var(--lens-error); }
-a.lens-chip:hover { text-decoration: none; filter: brightness(.97); }
+.lens-chip--note  { background: var(--lens-note-soft);  border-color: var(--lens-note-line);  color: var(--lens-note); }
+.lens-chip--warn  { background: var(--lens-warn-soft);  border-color: var(--lens-warn-line);  color: var(--lens-warn); }
+.lens-chip--error { background: var(--lens-error-soft); border-color: var(--lens-error-line); color: var(--lens-error); }
+a.lens-chip:hover { text-decoration: none; filter: brightness(var(--lens-chip-brightness)); }
 
 /* --------------------------------------------------------------------------
    banners, cards, badges
@@ -403,8 +1086,8 @@ a.lens-chip:hover { text-decoration: none; filter: brightness(.97); }
   padding: var(--lens-sp-4) var(--lens-sp-5);
   margin-bottom: var(--lens-sp-4);
 }
-.lens-card--error { border-color: #e3b0ae; background: var(--lens-error-soft); }
-.lens-card--note  { border-color: #c3d3df; background: var(--lens-note-soft); }
+.lens-card--error { border-color: var(--lens-error-line); background: var(--lens-error-soft); }
+.lens-card--note  { border-color: var(--lens-note-line);  background: var(--lens-note-soft); }
 .lens-card__title { margin: 0 0 var(--lens-sp-3); font-size: var(--lens-fs-md); }
 .lens-card__body  { margin: 0 0 var(--lens-sp-3); max-width: 90ch; }
 .lens-card__list  { margin: 0; padding-left: var(--lens-sp-5); }
@@ -445,7 +1128,7 @@ a.lens-chip:hover { text-decoration: none; filter: brightness(.97); }
 }
 .lens-btn:hover:not([disabled]) { background: var(--lens-surface-2); }
 .lens-btn[disabled] { color: var(--lens-ink-faint); cursor: default; }
-.lens-btn--primary { background: var(--lens-accent); border-color: var(--lens-accent); color: #fff; }
+.lens-btn--primary { background: var(--lens-accent); border-color: var(--lens-accent); color: var(--lens-on-accent); }
 .lens-btn--ghost { border-color: transparent; color: var(--lens-ink-dim); }
 
 .lens-tabs { display: flex; gap: var(--lens-sp-2); border-bottom: 1px solid var(--lens-rule); margin-bottom: var(--lens-sp-4); }
@@ -520,7 +1203,7 @@ a.lens-chip:hover { text-decoration: none; filter: brightness(.97); }
 .lens-reload {
   display: flex; align-items: center; gap: var(--lens-sp-3);
   background: var(--lens-note-soft);
-  border-bottom: 1px solid #c3d3df;
+  border-bottom: 1px solid var(--lens-note-line);
   padding: var(--lens-sp-2) var(--lens-sp-5);
 }
 .lens-reload__text { color: var(--lens-note); }
@@ -535,8 +1218,17 @@ a.lens-chip:hover { text-decoration: none; filter: brightness(.97); }
   background: var(--lens-surface);
   font-size: var(--lens-fs);
 }
-.lens-table th,
-.lens-table td {
+/* `:where()` on purpose, and load-bearing. As `.lens-table th, .lens-table td`
+   this rule scored (0,1,1) — MORE specific than any single-class cell hook —
+   so `text-align: left` here silently beat every one of them regardless of
+   source order: lens-num-col's `right` (the DESIGN §4 numeric alignment, in
+   EVERY table including the vtables), lens-vtable__td--nav's and
+   lens-vtable__empty's `center`. :where() contributes 0 to specificity, so the
+   base drops to (0,1,0) and the cell classes — all of which are declared
+   below this rule — win on source order, as the naming scheme always
+   intended. Nothing else in the sheet targets a cell with a class declared
+   ABOVE this rule, so no other declaration changes hands. */
+.lens-table :where(th, td) {
   border-bottom: 1px solid var(--lens-rule);
   padding: var(--lens-sp-2) var(--lens-sp-3);
   text-align: left;
@@ -553,8 +1245,50 @@ a.lens-chip:hover { text-decoration: none; filter: brightness(.97); }
 .lens-table--tight td { padding: 1px var(--lens-sp-3); }
 .lens-table caption { text-align: left; color: var(--lens-ink-faint); font-size: var(--lens-fs-sm); padding-bottom: var(--lens-sp-2); }
 
-/* numeric columns: right-aligned monospace, always */
-.lens-num-col { text-align: right; font-family: var(--lens-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* zebra + hover, to match lens-vtable. Three exclusions, all deliberate:
+     `table.`               l0/l1/l2 put lens-table on the DIV they mount a
+                            vtable into — the type selector keeps this off it;
+     :not(lens-vtable__table) the vtable's own table carries lens-table too and
+                            already stripes itself — the two must never stack;
+     :not(lens-rows__grid)  the timetable's rows carry STATE backgrounds
+                            (is-open, is-active) and each may be followed by
+                            its expanded detail row, so a stripe would both
+                            outrank the state and mislead about the pairing.
+   The child combinators keep it off nested tables as well. */
+table.lens-table:not(.lens-vtable__table):not(.lens-rows__grid) > tbody > tr:nth-child(even) { background: var(--lens-surface-2); }
+table.lens-table:not(.lens-vtable__table):not(.lens-rows__grid) > tbody > tr:hover { background: var(--lens-accent-soft); }
+
+/* Horizontal overflow belongs to the table's own box, never to the page
+   (2.3.3). lens-tablewrap is the shared wrapper; the named hosts below are
+   the divs the views already mount a table or a timeline into. */
+.lens-tablewrap,
+.lens-rows__table,
+.lens-filetable,
+.lens-memtable,
+.lens-wftable,
+.lens-l2files,
+.lens-l2timeline,
+.lens-l3__timetable,
+.lens-l4__timetable {
+  overflow-x: auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* the same discipline for a recorded image: it fits its column or it scales,
+   it never widens the page. (The lightbox is a later pass; this is only the
+   overflow floor under it.) */
+.lens-image { max-width: 100%; height: auto; display: block; }
+
+/* numeric columns: right-aligned monospace, always.
+   lens-table__num is the SAME role under a second name: vtable marks its
+   numeric cells lens-num-col, while lib/dom.mjs simpleTable() and the
+   hand-rolled census tables in l4/inv/audit/settings/workflow mark theirs
+   lens-table__num — a class that had no rule, so every "numeric" column in
+   every plain table rendered left-aligned proportional text (DESIGN §4
+   violation, brief 1.2). Aliasing here fixes all 5 files with no JS. */
+.lens-num-col,
+.lens-table__num { text-align: right; font-family: var(--lens-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .lens-vtable { display: flex; flex-direction: column; gap: var(--lens-sp-3); }
 .lens-vtable__toolbar { display: flex; align-items: center; gap: var(--lens-sp-3); flex-wrap: wrap; }
@@ -575,7 +1309,7 @@ a.lens-chip:hover { text-decoration: none; filter: brightness(.97); }
 .lens-vtable__th--sortable { cursor: pointer; user-select: none; }
 .lens-vtable__th--sortable:hover { background: var(--lens-surface-3); }
 .lens-vtable__th.is-sorted { color: var(--lens-ink); }
-.lens-vtable__sortmark { margin-left: var(--lens-sp-2); color: var(--lens-accent); }
+.lens-vtable__sortmark { margin-left: var(--lens-sp-2); color: var(--lens-accent-ink); }
 .lens-vtable__sortrank {
   margin-left: 1px; font-size: var(--lens-fs-xs);
   color: var(--lens-ink-faint); vertical-align: super;
@@ -632,7 +1366,20 @@ a.lens-chip:hover { text-decoration: none; filter: brightness(.97); }
   padding: 0 var(--lens-sp-2);
   cursor: pointer;
 }
-button.lens-kind.is-active { background: var(--lens-accent-soft); border-color: var(--lens-accent); color: var(--lens-ink); }
+/* The active kind filter. It sets the THREE other border colours by longhand
+   on purpose: `border-color` (a shorthand) at specificity (0,2,1) beat the
+   per-kind `border-left` at (0,1,0), so switching a chip on erased the very
+   hue that says which kind it is — the 12-hue kind identity never showed on
+   the chip the reader had chosen. The left edge is now left alone, and the
+   active state is carried by a fill AND by weight, never by colour alone. */
+button.lens-kind.is-active {
+  background: var(--lens-accent-soft);
+  border-top-color: var(--lens-accent);
+  border-right-color: var(--lens-accent);
+  border-bottom-color: var(--lens-accent);
+  color: var(--lens-ink);
+  font-weight: 600;
+}
 .lens-kind__count { color: var(--lens-ink-faint); }
 
 /* kind identity — one hue family per prefix (L4 colours by event kind) */
@@ -705,7 +1452,7 @@ button.lens-kind.is-active { background: var(--lens-accent-soft); border-color: 
 .lens-timeline__tick--error { stroke: var(--lens-error); stroke-width: 2; }
 .lens-timeline__inverted { fill: var(--lens-error); font-size: 12px; }
 .lens-timeline__mark-link:hover .lens-timeline__span,
-.lens-timeline__mark-link:hover .lens-timeline__tick { filter: brightness(.82); }
+.lens-timeline__mark-link:hover .lens-timeline__tick { filter: brightness(var(--lens-hover-brightness)); }
 
 .lens-timeline__bin-rect { fill: none; stroke: var(--lens-ink-dim); stroke-width: 1; }
 .lens-timeline__bin-count { fill: var(--lens-ink-dim); font-size: 10px; font-family: var(--lens-mono); }
@@ -714,7 +1461,7 @@ button.lens-kind.is-active { background: var(--lens-accent-soft); border-color: 
 .lens-timeline__gutter-bar { fill: var(--lens-ink-faint); }
 .lens-timeline__gutter-value { fill: var(--lens-ink-dim); font-size: 10px; font-family: var(--lens-mono); }
 
-.lens-timeline__brush { fill: rgba(180, 83, 31, .14); stroke: var(--lens-accent); }
+.lens-timeline__brush { fill: var(--lens-brush); stroke: var(--lens-accent); }
 
 .lens-timeline__info {
   position: absolute; right: var(--lens-sp-3); top: 30px; z-index: 15;
@@ -759,7 +1506,7 @@ button.lens-kind.is-active { background: var(--lens-accent-soft); border-color: 
 .lens-cost__rateline-body { font-family: var(--lens-mono); }
 .lens-cost__rateline--unpriced { color: var(--lens-error); }
 .lens-cost__rateline--unknown  { color: var(--lens-warn); }
-.lens-cost__interval { font-size: var(--lens-fs-sm); color: var(--lens-accent); }
+.lens-cost__interval { font-size: var(--lens-fs-sm); color: var(--lens-accent-ink); }
 .lens-cost__interval-note { font-size: var(--lens-fs-xs); color: var(--lens-ink-faint); }
 .lens-cost__disclosures { margin: 0; padding-left: var(--lens-sp-5); }
 .lens-cost__disclosure--warn  { color: var(--lens-warn); }
@@ -803,7 +1550,7 @@ button.lens-kind.is-active { background: var(--lens-accent-soft); border-color: 
   background: var(--lens-accent-soft);
   box-shadow: inset 2px 0 0 var(--lens-accent);
 }
-.lens-json__here { color: var(--lens-accent); }
+.lens-json__here { color: var(--lens-accent-ink); }
 .lens-json__locator { margin: var(--lens-sp-2) 0; }
 .lens-json__copy { border: 1px solid var(--lens-rule-strong); background: var(--lens-surface); font: inherit; font-size: var(--lens-fs-xs); cursor: pointer; border-radius: 2px; }
 
@@ -813,7 +1560,7 @@ button.lens-kind.is-active { background: var(--lens-accent-soft); border-color: 
 
 .lens-sheet {
   position: fixed; inset: 0; z-index: 60;
-  background: rgba(28, 26, 23, .28);
+  background: var(--lens-scrim);
   display: flex; align-items: center; justify-content: center;
 }
 .lens-sheet[hidden] { display: none; }
@@ -873,7 +1620,19 @@ kbd {
 .lens-contact__box { display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .lens-contact__img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .lens-contact--grid .lens-contact__img { max-width: 132px; max-height: 132px; }
-.lens-contact__link { display: block; }
+/* The tile opener is a BUTTON now (KAN-105 D1: a tile opens the lightbox in
+   place instead of navigating to L5), so the UA button chrome is reset back
+   to "a frame around an image". The focus ring is the global one and stays. */
+.lens-contact__link {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: zoom-in;
+}
 .lens-contact__cap {
   font-size: var(--lens-fs-xs);
   color: var(--lens-ink-dim);
@@ -883,6 +1642,103 @@ kbd {
   white-space: nowrap;
   max-width: 100%;
 }
+
+/* --------------------------------------------------------------------------
+   the image lightbox (KAN-105 §2.4.2) — an in-page LAYER over either gallery,
+   never a route. The media well is the one deliberately SQUARE element in the
+   system: an image gets a plain frame, not a rounded card.
+   -------------------------------------------------------------------------- */
+
+.lens-lightbox {
+  position: fixed; inset: 0; z-index: 50;
+  background: var(--lens-scrim);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--lens-sp-5);
+}
+.lens-lightbox[hidden] { display: none; }
+.lens-lightbox__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lens-sp-4);
+  max-width: min(1200px, 100%);
+  max-height: 100%;
+  padding: var(--lens-sp-5);
+  background: var(--lens-surface);
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  box-shadow: var(--lens-shadow);
+}
+.lens-lightbox__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--lens-sp-4);
+  border-bottom: 1px solid var(--lens-rule);
+  padding-bottom: var(--lens-sp-3);
+}
+.lens-lightbox__count {
+  margin: 0;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+  color: var(--lens-ink-dim);
+}
+.lens-lightbox__close { flex: 0 0 auto; }
+.lens-lightbox__body {
+  display: flex;
+  gap: var(--lens-sp-5);
+  align-items: flex-start;
+  min-height: 0;
+  overflow: auto;
+}
+/* SQUARE by intent — the media well is the exception to --lens-radius. */
+.lens-lightbox__well {
+  flex: 1 1 auto;
+  display: flex; align-items: center; justify-content: center;
+  min-width: 0;
+  padding: var(--lens-sp-3);
+  background: var(--lens-surface-3);
+  border: 1px solid var(--lens-rule);
+  border-radius: 0;
+}
+.lens-lightbox__img {
+  max-width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+}
+.lens-lightbox__side {
+  flex: 0 0 34ch;
+  max-width: 34ch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lens-sp-4);
+}
+.lens-lightbox__pager { margin-top: 0; }
+.lens-lightbox__facts { min-width: 0; }
+.lens-lightbox__step { font-family: var(--lens-mono); font-size: var(--lens-fs-sm); }
+.lens-lightbox__side .lens-facts { grid-template-columns: minmax(8ch, 11ch) 1fr; margin: 0; }
+.lens-lightbox__out { margin: 0; }
+.lens-lightbox__raw { font-size: var(--lens-fs-sm); }
+
+@media (max-width: 900px) {
+  .lens-lightbox__body { flex-direction: column; }
+  .lens-lightbox__side { flex: 1 1 auto; max-width: none; }
+  .lens-lightbox__img { max-height: 40vh; }
+}
+
+/* THE UNSTYLED SVG SURFACES — a themed default so nothing can vanish.
+
+   SVG marks take their paint from `fill`, whose UA default is black. On the
+   paper ground that merely looked unstyled; on the night ground it is
+   INVISIBLE. Two surfaces are affected: the L4 event strip (views/l4.mjs) and
+   the L3 lane Gantt / axis / occupancy strip (views/l3/svg.mjs,
+   views/l3/turnpage.mjs). Their per-mark vocabularies (lens-strip__*,
+   lens-lane*, lens-axis*) are among the classes pass 3 defines; until then
+   each SVG root hands its children ONE inherited, themed colour. Marks that
+   already name their own fill (.lens-occupancy__bin, .lens-occupancy__count)
+   are unaffected — this only fills the gap. */
+.lens-strip,
+.lens-lanes__svg,
+.lens-lanes__axis,
+.lens-lanes__main,
+.lens-occupancy { fill: var(--lens-ink); }
 
 /* L3 occupancy strip — fixed-height outlined bins, exact counts */
 .lens-occupancy__bin { fill: var(--lens-surface-2); stroke: var(--lens-rule-strong); }
@@ -917,8 +1773,2022 @@ kbd {
 .lens-raw__spacer { position: relative; }
 .lens-raw__block { position: absolute; left: 0; right: 0; }
 
+/* ==========================================================================
+   KAN-105 PASS 2 — readable prose and the shared component vocabulary.
+
+   Everything below was ALREADY in the DOM with no rule behind it: the text
+   bodies, the callouts that carry this app's honesty, the section/block
+   structure, and the shared table, control and value parts. Colour is taken
+   only from layer-2 tokens, so every rule here themes with the rest of the
+   app and none of it needs a dark-mode duplicate.
+
+   Two house rules hold throughout: nothing is told apart by hue alone (every
+   toned thing also carries its words), and lens-unknown keeps its em dash and
+   dotted rule to itself — no rule here borrows that look for a known value.
+   ========================================================================== */
+
 /* --------------------------------------------------------------------------
-   print + reduced motion (there is no motion, but be explicit)
+   prose bodies (brief 1.7) — lib/text.mjs textBody()
+
+   The bug this closes: the raw <pre> had no rule at all, so it took the UA
+   default `white-space: pre` and a 4,000-character assistant message rendered
+   as ONE line running off the viewport, dragging the whole page into
+   horizontal scroll. Wrapping, a 78ch measure and 1.6 leading are the fix.
+   Raw text stays the default (DESIGN §3); the markdown toggle is still opt-in
+   per row and still persisted.
+   -------------------------------------------------------------------------- */
+
+.lens-body { margin: var(--lens-sp-3) 0; min-width: 0; }
+
+/* the row of controls above a body: the raw/markdown toggle, copy, counts */
+.lens-body__tools,
+.lens-x__tools,
+.lens-mem__tools,
+.lens-raw__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  margin-bottom: var(--lens-sp-3);
+}
+
+.lens-body__raw {
+  margin: 0;
+  max-width: 78ch;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.6;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+  color: var(--lens-ink);
+}
+.lens-body__md { max-width: 78ch; }
+
+/* the long-body fold. The 40 here IS lib/text.mjs FOLD_LINES — the constant
+   that decides which bodies open folded and what the button's count says; if
+   one moves the other must. 40 × 1.6em is computed off the body's own
+   font-size, so the raw and rendered halves fold at the same height. The
+   clamp counts RENDERED lines: a recorded line longer than the 78ch measure
+   wraps and spends more than one of them. The dashed rule is the cut made
+   visible, and the button names the exact recorded line count behind it —
+   never a silent truncation. */
+.lens-body--folded .lens-body__raw,
+.lens-body--folded .lens-body__md {
+  max-height: calc(40 * 1.6em);
+  overflow: hidden;
+  border-bottom: 1px dashed var(--lens-rule-strong);
+}
+.lens-body__fold {
+  margin-top: var(--lens-sp-2);
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  color: var(--lens-ink-dim);
+  font: inherit;
+  font-size: var(--lens-fs-sm);
+  padding: 1px var(--lens-sp-3);
+  cursor: pointer;
+}
+.lens-body__fold:hover { background: var(--lens-surface-2); }
+
+/* the markdown scale. Every element lib/text.mjs renderMarkdown() emits has a
+   rule here — p, h1-h6, ul/ol/li, a, strong, em, code and the fenced block —
+   and every size comes from the app's own scale, never a UA default. */
+.lens-md {
+  max-width: 78ch;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+.lens-md > :first-child { margin-top: 0; }
+.lens-md > :last-child { margin-bottom: 0; }
+
+.lens-md p { margin: 0 0 var(--lens-sp-4); }
+
+.lens-md h1, .lens-md h2, .lens-md h3,
+.lens-md h4, .lens-md h5, .lens-md h6 {
+  margin: var(--lens-sp-5) 0 var(--lens-sp-3);
+  color: var(--lens-head);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.lens-md h1 { font-size: var(--lens-fs-lg); }
+.lens-md h2 { font-size: var(--lens-fs-md); }
+.lens-md h3 { font-size: var(--lens-fs); }
+.lens-md h4 { font-size: var(--lens-fs); }
+.lens-md h5,
+.lens-md h6 { font-size: var(--lens-fs-sm); text-transform: uppercase; letter-spacing: .05em; }
+
+.lens-md ul,
+.lens-md ol { margin: 0 0 var(--lens-sp-4); padding-left: var(--lens-sp-6); }
+.lens-md li { margin: var(--lens-sp-1) 0; }
+.lens-md li > ul,
+.lens-md li > ol { margin-bottom: 0; }
+
+.lens-md a { color: var(--lens-link); text-decoration: underline; text-underline-offset: 2px; }
+.lens-md strong { font-weight: 600; color: var(--lens-ink-strong); }
+.lens-md em { font-style: italic; }
+.lens-md code { font-family: var(--lens-mono); font-size: .95em; }
+
+/* a fenced block keeps its columns: the BOX scrolls, the page never does */
+.lens-md__code {
+  margin: 0 0 var(--lens-sp-4);
+  padding: var(--lens-sp-3);
+  max-width: 78ch;
+  overflow-x: auto;
+  background: var(--lens-surface-2);
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  line-height: 1.45;
+}
+.lens-md__code code { background: none; padding: 0; border-radius: 0; }
+
+/* --------------------------------------------------------------------------
+   the callout scale (brief 1.3 / 2.2)
+
+   lens-note carries this app's most valuable text — coverage denominators,
+   SPEC citations, "why this number is what it is" — at ~40 sites across 13
+   modules, and had no rule, so all of it rendered as undifferentiated body
+   copy. Tone comes from the four token families; every callout also names its
+   tone in words, so nothing here is distinguished by colour alone.
+   -------------------------------------------------------------------------- */
+
+.lens-note {
+  margin: var(--lens-sp-3) 0;
+  padding-left: var(--lens-sp-4);
+  border-left: 2px solid var(--lens-note-line);
+  max-width: 80ch;
+  color: var(--lens-note);
+  font-size: var(--lens-fs-sm);
+  line-height: 1.55;
+}
+.lens-note--problem {
+  border-left-width: 3px;
+  border-left-color: var(--lens-error-line);
+  color: var(--lens-error);
+}
+
+/* denominator statements — "paths from 18,268 tool calls…". The figures are
+   plain text inside the sentence, so tabular numerals do the aligning and any
+   value node the sentence carries (an unknown, a count) stays monospace. */
+.lens-coverage {
+  margin: var(--lens-sp-3) 0;
+  max-width: 80ch;
+  color: var(--lens-ink-dim);
+  font-size: var(--lens-fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.lens-coverage .lens-num,
+.lens-coverage code { font-family: var(--lens-mono); }
+
+.lens-empty {
+  margin: var(--lens-sp-5) 0;
+  padding: var(--lens-sp-5);
+  border: 1px dashed var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  color: var(--lens-ink-dim);
+  text-align: center;
+}
+
+.lens-banner__icon { flex: 0 0 auto; color: var(--lens-ink-dim); line-height: 1; }
+.lens-banner__text { flex: 1 1 auto; min-width: 0; }
+.lens-banner__extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-2) var(--lens-sp-3);
+  font-size: var(--lens-fs-sm);
+}
+.lens-banner__link { color: var(--lens-link); font-family: var(--lens-mono); }
+.lens-banner__note { color: var(--lens-ink-dim); }
+.lens-banner--partial { border-left-color: var(--lens-warn); background: var(--lens-warn-soft); }
+
+/* an inline tag on a row — "cached", "twin", "other project". Always carries
+   its reason in a title, hence the help cursor. */
+.lens-tag {
+  display: inline-block;
+  margin-left: var(--lens-sp-2);
+  padding: 0 var(--lens-sp-2);
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: 2px;
+  background: var(--lens-surface-2);
+  color: var(--lens-ink-dim);
+  font-size: var(--lens-fs-xs);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.lens-check { accent-color: var(--lens-accent); margin: 0 var(--lens-sp-2) 0 0; }
+
+/* --------------------------------------------------------------------------
+   structure — sections, blocks, page shells, error cards
+   -------------------------------------------------------------------------- */
+
+.lens-section { margin: 0 0 var(--lens-sp-6); }
+.lens-section:last-child { margin-bottom: 0; }
+
+.lens-section__title {
+  margin: 0 0 var(--lens-sp-3);
+  padding-bottom: var(--lens-sp-2);
+  border-bottom: 1px solid var(--lens-rule);
+  font-size: var(--lens-fs-md);
+  font-weight: 600;
+}
+
+/* every heading is gold (the brand's one typographic signature). The token
+   is the brand gold deepened for text sizes — see --pc-head-ink. The DISPLAY
+   FACE those headings wear is set in the pass-6 section at the foot of this
+   file, where it can beat the per-title `font-weight` rules below. */
+.lens-section__title,
+.lens-block__title,
+.lens-card__title,
+.lens-cost__title,
+.lens-statbar__panel-title,
+.lens-sheet__title,
+.lens-ledger__h { color: var(--lens-head); }
+
+/* the L5 rendered blocks: one card per content block, keyed on its left rule */
+.lens-block {
+  margin: 0 0 var(--lens-sp-4);
+  padding: var(--lens-sp-4);
+  border: 1px solid var(--lens-rule);
+  border-left: 3px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  min-width: 0;
+}
+.lens-block--event { border-left-color: var(--lens-accent); }
+.lens-block__title { margin: 0 0 var(--lens-sp-3); font-size: var(--lens-fs-md); font-weight: 600; }
+.lens-block__sub {
+  margin: var(--lens-sp-4) 0 var(--lens-sp-2);
+  font-size: var(--lens-fs-xs);
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: .04em;
+  color: var(--lens-ink-faint);
+}
+.lens-block > .lens-block__sub:first-child { margin-top: 0; }
+
+.lens-error__title {
+  margin: 0 0 var(--lens-sp-2);
+  font-size: var(--lens-fs-md);
+  font-family: var(--lens-mono);
+  color: var(--lens-error);
+}
+.lens-error__msg { margin: 0 0 var(--lens-sp-3); max-width: 80ch; color: var(--lens-ink); }
+
+/* the per-view roots and their body areas. flow-root so a child's margin
+   cannot escape the view and collide with the band above it. */
+.lens-page,
+.lens-l0, .lens-l1, .lens-l2 { display: flow-root; }
+.lens-page__body,
+.lens-l0__body, .lens-l1__body, .lens-l2__body { display: flow-root; min-width: 0; }
+.lens-page__body > :last-child,
+.lens-l0__body > :last-child,
+.lens-l1__body > :last-child,
+.lens-l2__body > :last-child { margin-bottom: 0; }
+
+.lens-l2__badges { margin-bottom: var(--lens-sp-3); }
+.lens-l2__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lens-sp-2) var(--lens-sp-4);
+  margin: 0 0 var(--lens-sp-4);
+  font-size: var(--lens-fs-sm);
+}
+
+/* the "how these bars are bounded" ledgers under the L0/L1/L2 timelines */
+.lens-ledger {
+  margin: var(--lens-sp-4) 0;
+  padding-left: var(--lens-sp-4);
+  border-left: 2px solid var(--lens-rule);
+  max-width: 80ch;
+  color: var(--lens-ink-dim);
+  font-size: var(--lens-fs-sm);
+}
+.lens-ledger__h { margin: 0 0 var(--lens-sp-2); font-size: var(--lens-fs-sm); font-weight: 600; }
+.lens-ledger__list { margin: 0; padding-left: var(--lens-sp-5); }
+.lens-ledger__list li { margin: var(--lens-sp-1) 0; }
+.lens-ledger__total { font-family: var(--lens-mono); font-weight: 600; color: var(--lens-ink); }
+
+/* --------------------------------------------------------------------------
+   table parts the two table systems emit but the sheet never defined
+   -------------------------------------------------------------------------- */
+
+.lens-vtable__table { margin: 0; }
+.lens-vtable__caption {
+  text-align: left;
+  color: var(--lens-ink-faint);
+  font-size: var(--lens-fs-sm);
+  padding-bottom: var(--lens-sp-2);
+}
+/* a long path or slug must wrap inside its cell rather than widen the table */
+.lens-vtable__td { overflow-wrap: anywhere; }
+.lens-vtable__foot { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--lens-sp-3); }
+/* the Σ row and the group subheaders: label cells stay left, figures stay put */
+.lens-vtable__total-label,
+.lens-vtable__subtotal-label { text-align: left; }
+.lens-vtable__total > th,
+.lens-vtable__total > td { white-space: nowrap; }
+.lens-table__link { color: var(--lens-link); }
+
+/* l0/l1/l2 mount a vtable into a DIV that also carries lens-table; the table
+   rules mean nothing there and the vtable paints its own surface. */
+.lens-table--projects,
+.lens-table--sessions,
+.lens-table--agents { display: block; background: none; }
+
+/* path- and key-shaped first columns: monospace, and allowed to wrap — they
+   are the widest cells in the app. */
+.lens-table--files td:first-child,
+.lens-table--keys td:first-child,
+.lens-table--rates td:first-child { font-family: var(--lens-mono); word-break: break-all; }
+
+/* the raw file listing, shared by the inventory view (free-flowing, wrapping
+   rows) and the L4 raw viewport (fixed 18px rows — see the note above). */
+.lens-raw {
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+}
+.lens-raw__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: 0 var(--lens-sp-3);
+  border-bottom: 1px solid var(--lens-rule);
+}
+.lens-raw__no {
+  flex: 0 0 7ch;
+  text-align: right;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+}
+a.lens-raw__no { color: var(--lens-link); }
+.lens-raw__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* the virtualised rows are a fixed 18px: they must not wrap or draw a rule,
+   or the painted window drifts off its spacer offset. */
+.lens-raw--virt .lens-raw__line { border-bottom: 0; overflow: hidden; }
+.lens-raw--virt .lens-raw__text { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.lens-raw__blob {
+  margin: 0;
+  padding: var(--lens-sp-3);
+  max-height: 70vh;
+  overflow: auto;
+  background: var(--lens-surface-2);
+  border-radius: var(--lens-radius);
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lens-raw__status { color: var(--lens-ink-faint); font-size: var(--lens-fs-sm); }
+
+/* the workflow journal: the same timestamped mono line list as the raw
+   listing above, so the two read as one idiom */
+.lens-logs {
+  margin: var(--lens-sp-3) 0;
+  padding: var(--lens-sp-2) var(--lens-sp-3);
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+}
+.lens-logs__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lens-logs__at { flex: 0 0 auto; color: var(--lens-ink-faint); font-size: var(--lens-fs-xs); }
+
+/* --------------------------------------------------------------------------
+   controls and links
+   -------------------------------------------------------------------------- */
+
+.lens-link { color: var(--lens-link); }
+.lens-link:hover { text-decoration: underline; }
+
+.lens-input {
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  color: var(--lens-ink);
+  font: inherit;
+  padding: 1px var(--lens-sp-3);
+  max-width: 100%;
+}
+.lens-input::placeholder { color: var(--lens-ink-faint); }
+
+.lens-btn--copy,
+.lens-btn--toggle,
+.lens-btn--expand { font-size: var(--lens-fs-sm); color: var(--lens-ink-dim); }
+.lens-btn--copy { font-family: var(--lens-mono); }
+/* the pressed/open state carries a fill and weight, never colour alone */
+.lens-btn--toggle[aria-pressed="true"],
+.lens-btn--expand[aria-expanded="true"] {
+  background: var(--lens-accent-soft);
+  border-color: var(--lens-accent);
+  color: var(--lens-ink);
+  font-weight: 600;
+}
+
+/* native <details>: free keyboard, free find-in-page, one rotating marker */
+.lens-details {
+  margin: var(--lens-sp-3) 0;
+  padding: 0 var(--lens-sp-4);
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+}
+.lens-details[open] { padding-bottom: var(--lens-sp-3); }
+.lens-details > summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  list-style: none;
+  padding: var(--lens-sp-3) 0;
+  color: var(--lens-ink-dim);
+  font-weight: 600;
+  cursor: pointer;
+}
+.lens-details > summary::-webkit-details-marker { display: none; }
+.lens-details > summary::before {
+  content: "\25B8";
+  display: inline-block;
+  color: var(--lens-accent);
+  transition: transform .12s ease;
+}
+.lens-details[open] > summary::before { transform: rotate(90deg); }
+.lens-details[open] > summary { border-bottom: 1px solid var(--lens-rule); }
+.lens-details > summary:focus-visible {
+  outline: 3px solid var(--lens-head);
+  outline-offset: -3px;   /* a summary spans the box: the ring goes inside it */
+  border-radius: var(--lens-radius-inline);
+}
+
+.lens-pager__prev,
+.lens-pager__next { font-family: var(--lens-mono); font-size: var(--lens-fs-sm); }
+/* an end of the run is not a disabled control: it says why, in a title */
+.lens-pager__end { color: var(--lens-ink-faint); cursor: help; }
+
+/* views/l0.mjs viewTabs() marks its active tab --on, and l4's current tab (a
+   span, not a link) --current; only `.is-active` had a rule and nothing sets
+   it, so no tab strip in the app showed where the reader was. */
+.lens-tabs__tab--on,
+.lens-tabs__tab--current {
+  background: var(--lens-surface);
+  border-color: var(--lens-rule);
+  color: var(--lens-ink);
+  font-weight: 600;
+}
+
+.lens-groupby {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-2);
+  margin: var(--lens-sp-3) 0;
+  font-size: var(--lens-fs-sm);
+  color: var(--lens-ink-faint);
+}
+.lens-groupby__opt {
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  color: var(--lens-ink-dim);
+  font: inherit;
+  font-size: var(--lens-fs-sm);
+  padding: 0 var(--lens-sp-3);
+  cursor: pointer;
+}
+.lens-groupby__opt:hover { background: var(--lens-surface-2); text-decoration: none; }
+.lens-groupby__opt--on {
+  background: var(--lens-accent);
+  border-color: var(--lens-accent);
+  color: var(--lens-on-accent);
+  font-weight: 600;
+}
+
+/* the labelled back control, at the head of the crumb rail. The arrow belongs
+   to the label the router writes ("back to 47 results" with its glyph), not
+   to this rule — a ::before here would draw a second one. */
+.lens-return {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--lens-sp-2);
+  padding: 0 var(--lens-sp-3);
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  color: var(--lens-ink-dim);
+  font-size: var(--lens-fs-sm);
+  white-space: nowrap;
+}
+.lens-return:hover { background: var(--lens-surface-2); text-decoration: none; }
+
+/* --------------------------------------------------------------------------
+   the facts grid — TWO shapes under one name.
+   lib/dom.mjs factList() builds a <dl> (label / value / source); l2's session
+   header builds a <section> of cells. Both are the same component: a labelled
+   recorded value with the source it came from printed under it.
+   -------------------------------------------------------------------------- */
+
+dl.lens-facts {
+  display: grid;
+  grid-template-columns: minmax(12ch, 22ch) 1fr;
+  gap: var(--lens-sp-2) var(--lens-sp-4);
+  margin: 0 0 var(--lens-sp-4);
+}
+.lens-facts__key { color: var(--lens-ink-faint); font-size: var(--lens-fs-sm); }
+.lens-facts__val { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.lens-facts__note { display: block; color: var(--lens-ink-faint); font-size: var(--lens-fs-xs); }
+
+section.lens-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(26ch, 1fr));
+  gap: var(--lens-sp-4);
+  margin: 0 0 var(--lens-sp-5);
+}
+.lens-facts__cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lens-sp-1);
+  padding-left: var(--lens-sp-3);
+  border-left: 2px solid var(--lens-rule);
+  min-width: 0;
+}
+.lens-facts__label {
+  font-size: var(--lens-fs-xs);
+  text-transform: lowercase;
+  letter-spacing: .04em;
+  color: var(--lens-ink-faint);
+}
+.lens-facts__value {
+  font-size: var(--lens-fs-md);
+  color: var(--lens-ink-strong);
+  overflow-wrap: anywhere;
+}
+.lens-facts__link { display: block; font-size: var(--lens-fs-sm); overflow-wrap: anywhere; }
+a.lens-facts__link { color: var(--lens-link); }
+.lens-facts__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lens-sp-1) var(--lens-sp-3);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+}
+.lens-facts__count { font-family: var(--lens-mono); }
+.lens-facts__src { display: block; color: var(--lens-ink-faint); font-size: var(--lens-fs-xs); cursor: help; }
+/* "no timestamp — file order only" is a caveat on the value above it */
+.lens-facts__untimed { color: var(--lens-warn); cursor: help; }
+
+/* --------------------------------------------------------------------------
+   values, badges, chips
+   -------------------------------------------------------------------------- */
+
+/* the KNOWN counterpart of lens-unknown: full-strength ink, no dotted rule,
+   no help cursor. The two must never read alike (house rule 3). */
+.lens-val { color: var(--lens-ink); }
+
+/* the four token figures, always in this order, each with its own title */
+.lens-tok { font-family: var(--lens-mono); font-variant-numeric: tabular-nums; cursor: help; }
+.lens-tok--in  { color: var(--lens-ink); }
+.lens-tok--out { color: var(--lens-ink-strong); font-weight: 600; }
+.lens-tok--cw  { color: var(--lens-ink-dim); }
+.lens-tok--cr  { color: var(--lens-ink-faint); }
+.lens-tok__sep { color: var(--lens-ink-faint); }
+
+/* an originSessionId that names a session not on disk. A recorded fact, not
+   an error — gold, and it carries the reason in its title. */
+.lens-dangling { color: var(--lens-warn); cursor: help; }
+.lens-affects { font-family: var(--lens-mono); font-size: var(--lens-fs-xs); color: var(--lens-ink-dim); }
+
+.lens-badges { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--lens-sp-2); }
+/* blockview emits some badges as <p>: kill the UA paragraph margins */
+p.lens-badge { margin: var(--lens-sp-2) 0; }
+.lens-badge--cached   { border-color: var(--lens-note-line);  color: var(--lens-note);  background: var(--lens-note-soft); }
+.lens-badge--modified,
+.lens-badge--no-reply { border-color: var(--lens-warn-line);  color: var(--lens-warn);  background: var(--lens-warn-soft); }
+.lens-badge--error    { border-color: var(--lens-error-line); color: var(--lens-error); background: var(--lens-error-soft); }
+/* a badge whose count is not recorded: dashed, so it is not read as a zero */
+.lens-badge--unknown  { border-style: dashed; color: var(--lens-ink-faint); }
+
+/* chips.mjs wraps every chip's words so the box can be a link or a span
+   without the two drifting apart */
+.lens-chip__text { display: inline-block; }
+.lens-chip--workflow  { border-color: var(--lens-accent); background: var(--lens-accent-soft); color: var(--lens-accent-ink); }
+.lens-chip--resumed,
+.lens-chip--countedin { background: var(--lens-surface-3); color: var(--lens-ink-dim); }
+/* the two recorded agent tags (views/l3/state.mjs agentTags), as chips on the
+   L4 header — the same two facts the lane tags carry, same two hues */
+.lens-chip--cached   { border-color: var(--lens-note-line); background: var(--lens-note-soft); color: var(--lens-note); }
+.lens-chip--worktree { border-color: var(--lens-rule-strong); color: var(--lens-p4); }
+
+/* --------------------------------------------------------------------------
+   shared-component parts that had no rule
+   -------------------------------------------------------------------------- */
+
+.lens-statbar { display: flex; flex-direction: column; gap: var(--lens-sp-2); }
+.lens-loading__label { color: var(--lens-ink-dim); }
+.lens-crumbs__link { color: var(--lens-link); }
+.lens-crumbs__here { color: var(--lens-ink); font-weight: 600; }
+/* the scope sentence repeated inside a pane rather than in the band */
+.lens-scope--pane { padding: 0 0 var(--lens-sp-2); font-size: var(--lens-fs-sm); }
+
+.lens-rows__pager { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--lens-sp-3); }
+.lens-rows__find-q { min-width: 28ch; }
+.lens-rows__find-all { font-size: var(--lens-fs-sm); }
+
+.lens-timeline__range { color: var(--lens-ink-dim); }
+.lens-timeline__info-panel { max-width: 62ch; }
+/* the SVG groups the timeline draws into. Every mark names its own fill, but
+   an inherited themed colour means a new one can never paint UA black on the
+   night ground (same guard as the unstyled-SVG rule above). */
+.lens-timeline__axis,
+.lens-timeline__bin,
+.lens-timeline__gutter,
+.lens-timeline__lane { fill: var(--lens-ink); }
+
+.lens-cost__components,
+.lens-cost__models { width: 100%; margin: var(--lens-sp-2) 0 var(--lens-sp-3); }
+.lens-cost__disclosure { margin: var(--lens-sp-1) 0; }
+
+/* ==========================================================================
+   KAN-105 PASS 3 — the per-view vocabularies.
+
+   Everything below is a class a view module already emits and the stylesheet
+   never defined: the L0 day bands, the L2 turn cards and session strip, the L3
+   lane Gantt / orchestration tree / prompt card, the L4 event strip, the L5
+   block, patch and cross-reference parts, and the find / inventory / audit /
+   settings pages.
+
+   Three rules hold throughout, and they are the same three the rest of this
+   file obeys:
+     * colour comes from --lens-* tokens ONLY, never a literal;
+     * a state is never carried by hue alone — a weight, a rule, a fill or a
+       glyph carries it too, and the label is always written out;
+     * `—` (.lens-unknown) and a real `0` (.lens-num) never look alike.
+
+   The 12 identity hues (--lens-p1…p12) are used here for WHICH-ONE questions
+   (which project, which block kind, which lane state) and never for good/bad:
+   this brand has no status green and no status red, so the four semantic tones
+   (--lens-ok / --lens-warn / --lens-error / --lens-note) are told apart by
+   weight and by the word each mark always carries.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   L0 — the day-band timeline (views/l0.mjs, and l1.mjs's project variant)
+
+   The primary bands are drawn by components/timeline.mjs; the classes here are
+   the frame around it (the run blocks, the month/gap separator rows, the
+   project legend) plus the FALLBACK band rows l0 paints when the timeline
+   component throws. Fallback or not, a band is one grammar:
+
+       [ date gutter ]  [ the bars ]  [ right stat gutter ]
+   -------------------------------------------------------------------------- */
+
+.lens-bands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lens-sp-4);
+  margin-bottom: var(--lens-sp-5);
+}
+.lens-bands__run {
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  padding: var(--lens-sp-2);
+  overflow-x: auto;
+}
+/* the L1 variant: the same bands filtered to one project, so it sits tighter */
+.lens-bands--project { gap: var(--lens-sp-3); }
+
+/* one band row — the fallback shape, and the shape the day list reuses */
+.lens-band {
+  display: grid;
+  grid-template-columns: minmax(11ch, 14ch) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: var(--lens-sp-1) var(--lens-sp-2);
+  border-bottom: 1px solid var(--lens-rule);
+}
+.lens-band:last-child { border-bottom: 0; }
+.lens-band__date {
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+  white-space: nowrap;
+}
+.lens-band__count { color: var(--lens-ink-dim); font-size: var(--lens-fs-sm); }
+/* the right stat gutter: recorded cost · the four token figures · sessions */
+.lens-band__gutter {
+  justify-self: end;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+  white-space: nowrap;
+}
+/* L1's per-session underline chips beneath a band */
+.lens-band__under {
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  border-bottom: 2px solid var(--lens-underline);
+  margin-right: var(--lens-sp-2);
+}
+
+/* separator rows between runs of days. A MONTH row is a subtotal and carries a
+   rule the eye can stop on; a GAP row is the absence of recorded days and is
+   dashed, so the two are never read as the same thing. */
+.lens-sep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: var(--lens-sp-2) var(--lens-sp-3);
+  font-size: var(--lens-fs-sm);
+}
+.lens-sep--month {
+  background: var(--lens-surface-3);
+  border-top: 1px solid var(--lens-rule-strong);
+  border-bottom: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+}
+.lens-sep--gap {
+  border-top: 1px dashed var(--lens-rule-strong);
+  color: var(--lens-ink-faint);
+  cursor: help;
+}
+.lens-sep__label {
+  font-weight: 600;
+  color: var(--lens-head);
+  white-space: nowrap;
+}
+.lens-sep--gap .lens-sep__label { font-weight: normal; color: inherit; }
+.lens-sep__stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--lens-sp-2);
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-dim);
+}
+.lens-sep__note {
+  flex: 1 0 100%;
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+  cursor: help;
+}
+
+/* the project legend — a filter control, so an ON chip carries a fill and a
+   weight as well as its identity swatch */
+.lens-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lens-sp-2);
+  margin-bottom: var(--lens-sp-4);
+}
+.lens-legend__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lens-sp-2);
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  color: var(--lens-ink-dim);
+  font-size: var(--lens-fs-xs);
+  padding: 0 var(--lens-sp-2);
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lens-legend__chip:hover { background: var(--lens-surface-2); text-decoration: none; }
+.lens-legend__chip--on {
+  background: var(--lens-accent-soft);
+  border-color: var(--lens-accent);
+  color: var(--lens-ink);
+  font-weight: 600;
+}
+/* past the 12th project there is no identity hue; the chip says so with a
+   dashed edge rather than pretending to a 13th colour */
+.lens-legend__chip--overflow { border-style: dashed; }
+.lens-legend__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--lens-rule-strong);
+  flex: 0 0 auto;
+}
+.lens-legend__clear { font-size: var(--lens-fs-xs); color: var(--lens-link); }
+
+/* ?day= — one day expanded. The header names the day and offers the way back. */
+.lens-dayhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding-bottom: var(--lens-sp-2);
+  margin-bottom: var(--lens-sp-3);
+  border-bottom: 1px solid var(--lens-rule-strong);
+}
+.lens-dayhead__back { font-size: var(--lens-fs-sm); white-space: nowrap; }
+.lens-dayhead__title {
+  margin: 0;
+  font-size: var(--lens-fs-lg);
+  font-weight: 600;
+  color: var(--lens-head);
+}
+.lens-dayhead__stats {
+  margin-left: auto;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+}
+
+.lens-day {
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  padding: var(--lens-sp-2);
+  overflow-x: auto;
+}
+.lens-day__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: var(--lens-sp-1) 0;
+  border-bottom: 1px solid var(--lens-rule);
+  font-size: var(--lens-fs-sm);
+}
+.lens-day__row:last-child { border-bottom: 0; }
+.lens-day__slug { color: var(--lens-ink-dim); overflow-wrap: anywhere; }
+.lens-day__t {
+  margin-left: auto;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+  white-space: nowrap;
+}
+
+/* the project cell of the ?v=table projects table */
+.lens-projcell { display: inline-flex; align-items: center; gap: var(--lens-sp-2); min-width: 0; }
+.lens-projcell__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--lens-rule-strong);
+  flex: 0 0 auto;
+}
+.lens-projcell__name { overflow-wrap: anywhere; }
+
+/* ?v=inventory — the corpus ledger: blocks of label/value rows */
+.lens-inv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(30ch, 1fr));
+  gap: var(--lens-sp-4);
+  margin-bottom: var(--lens-sp-5);
+}
+.lens-inv__block {
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  padding: var(--lens-sp-3) var(--lens-sp-4);
+}
+.lens-inv__h {
+  margin: 0 0 var(--lens-sp-2);
+  font-size: var(--lens-fs-sm);
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--lens-head);
+}
+.lens-inv__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: var(--lens-sp-1) 0;
+  border-bottom: 1px solid var(--lens-rule);
+}
+.lens-inv__row:last-child { border-bottom: 0; }
+.lens-inv__label { color: var(--lens-ink-faint); font-size: var(--lens-fs-sm); }
+.lens-inv__value {
+  margin-left: auto;
+  font-family: var(--lens-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.lens-inv__note { font-size: var(--lens-fs-xs); color: var(--lens-ink-faint); }
+/* an expected-zero census that MATCHES its expectation, and one that does not.
+   The glyph (✓ / ⚠) is the signal; the colour only agrees with it. */
+.lens-inv__ok  { color: var(--lens-ok); cursor: help; }
+.lens-inv__bad { color: var(--lens-warn); font-weight: 600; cursor: help; }
+
+/* the store-wide problems drawer (a native <details>; .lens-details styles the
+   box itself, this is only its table well) */
+.lens-problems { margin-top: var(--lens-sp-4); }
+.lens-problems__table { margin-top: var(--lens-sp-2); }
+.lens-problems__where { font-size: var(--lens-fs-xs); color: var(--lens-ink-faint); cursor: help; }
+
+/* "impacts totals?" — the recorded Problem.affects vocabulary, all three
+   values, each spelled out in the cell text as well as weighted here */
+.lens-affects { font-family: var(--lens-mono); font-size: var(--lens-fs-xs); }
+.lens-affects--aggregates { color: var(--lens-error); font-weight: 600; }
+.lens-affects--display    { color: var(--lens-warn); }
+.lens-affects--nothing    { color: var(--lens-ink-faint); }
+
+/* problem rows in the hand-rolled tables, by recorded severity */
+.lens-table__row--error   > td:first-child { box-shadow: inset 3px 0 0 var(--lens-error); }
+.lens-table__row--warning > td:first-child { box-shadow: inset 3px 0 0 var(--lens-warn); }
+.lens-table__row--note    > td:first-child { box-shadow: inset 3px 0 0 var(--lens-note-line); }
+
+/* the pending list on the L0 loading state */
+.lens-pending__list { margin: var(--lens-sp-2) 0; padding-left: var(--lens-sp-5); }
+.lens-pending__item { font-size: var(--lens-fs-sm); color: var(--lens-ink-dim); }
+
+/* --------------------------------------------------------------------------
+   L2 — the session strip, the turn cards and the composition bar
+   -------------------------------------------------------------------------- */
+
+.lens-strip__canvas { overflow-x: auto; }
+/* the fallback rows, when the timeline component is unavailable */
+.lens-strip__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-2);
+  font-size: var(--lens-fs-sm);
+  padding: var(--lens-sp-1) 0;
+  border-bottom: 1px solid var(--lens-rule);
+}
+.lens-strip__oh { color: var(--lens-overhang); font-size: var(--lens-fs-xs); }
+.lens-strip__notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lens-sp-2) var(--lens-sp-4);
+  padding-top: var(--lens-sp-2);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+}
+.lens-strip__tz { font-family: var(--lens-mono); }
+/* every strip note is a caveat about what is NOT drawn — it carries its reason
+   in a title, so the help cursor is part of the affordance */
+.lens-strip__note { cursor: help; }
+
+.lens-turns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46ch, 1fr));
+  gap: var(--lens-sp-4);
+}
+.lens-turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lens-sp-2);
+  border: 1px solid var(--lens-rule);
+  border-left: 3px solid var(--lens-mark);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  padding: var(--lens-sp-3) var(--lens-sp-4);
+  min-width: 0;
+}
+.lens-turn:hover { background: var(--lens-surface-2); }
+/* the preamble is not a turn: everything recorded before the first opener. It
+   takes the neutral mark and says so in words on the card. */
+.lens-turn--preamble { border-left-color: var(--lens-preamble); }
+.lens-turn__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-2) var(--lens-sp-3);
+}
+.lens-turn__idx { font-weight: 600; }
+.lens-turn__time,
+.lens-turn__wall {
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-dim);
+}
+.lens-turn__cost { margin-left: auto; }
+.lens-turn__tokens {
+  flex: 1 0 100%;
+  font-size: var(--lens-fs-xs);
+  cursor: help;
+}
+.lens-turn__agents { font-size: var(--lens-fs-xs); color: var(--lens-ink-dim); }
+.lens-turn__preamble-note { margin: 0; font-size: var(--lens-fs-xs); color: var(--lens-ink-faint); cursor: help; }
+/* the first three recorded prompt lines, verbatim — wrapped, measured, and
+   never allowed to widen the card */
+.lens-turn__prompt {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 6.6em;
+  overflow: hidden;
+  font-size: var(--lens-fs-sm);
+  color: var(--lens-ink);
+  border-left: 2px solid var(--lens-rule);
+  padding-left: var(--lens-sp-3);
+}
+.lens-turn__more { font-size: var(--lens-fs-xs); }
+.lens-turn__census { margin: 0; font-size: var(--lens-fs-xs); color: var(--lens-ink-faint); }
+
+/* the composition bar: one segment per recorded block kind, widths from the
+   recorded counts (the flex-grow is the datum and lives inline). Each segment
+   also carries its kind and count as text, so the bar is never the only
+   statement of the census. */
+.lens-comp {
+  display: flex;
+  height: 14px;
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  overflow: hidden;
+  cursor: help;
+}
+.lens-comp__seg {
+  display: block;
+  min-width: 2px;
+  background: var(--lens-p-overflow);
+}
+.lens-comp__seg + .lens-comp__seg { border-left: 1px solid var(--lens-surface); }
+/* the segment's own text census — read by find-in-page and by a screen reader,
+   clipped visually because the bar is 14px tall */
+.lens-comp__label {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* the same 11-kind identity set the timetable chips use (SPEC §3) */
+.lens-comp__seg--prompt          { background: var(--lens-p1); }
+.lens-comp__seg--text            { background: var(--lens-p3); }
+.lens-comp__seg--thinking        { background: var(--lens-p4); }
+.lens-comp__seg--tool_use        { background: var(--lens-p2); }
+.lens-comp__seg--tool_result     { background: var(--lens-p6); }
+.lens-comp__seg--image           { background: var(--lens-p7); }
+.lens-comp__seg--fallback        { background: var(--lens-error); }
+.lens-comp__seg--attachment      { background: var(--lens-p8); }
+.lens-comp__seg--system          { background: var(--lens-p10); }
+.lens-comp__seg--queue-operation { background: var(--lens-p9); }
+.lens-comp__seg--unknown         { background: var(--lens-p-overflow); }
+/* no per-turn census on this payload: a dashed empty rail, never a bar of one
+   colour that would read as a recorded composition */
+.lens-comp--none {
+  display: block;
+  height: auto;
+  border: 0;
+  border-left: 2px dashed var(--lens-rule-strong);
+  padding-left: var(--lens-sp-3);
+  margin: 0;
+  font-size: var(--lens-fs-xs);
+  cursor: default;
+}
+
+/* the session facts row — one cell per recorded metadata type (SPEC §3). The
+   key modifiers exist so a type can carry its own emphasis; the title cell is
+   the session's name and reads a step larger. */
+.lens-facts__cell--title .lens-facts__value { font-size: var(--lens-fs-lg); color: var(--lens-head); }
+.lens-facts__cell--mode .lens-facts__value,
+.lens-facts__cell--last-prompt .lens-facts__value { font-family: var(--lens-mono); font-size: var(--lens-fs); }
+.lens-facts__cell--pr,
+.lens-facts__cell--frame { border-left-color: var(--lens-accent); }
+
+/* --------------------------------------------------------------------------
+   L3 — the lane Gantt, the orchestration tree and the prompt card
+
+   The SVG here inherits nothing useful from the page: a <text> with no rule
+   renders at the UA's 16px inside a 20-unit lane and at UA black on the night
+   ground. Every mark below names its own size and its own themed paint.
+   -------------------------------------------------------------------------- */
+
+.lens-l3__split {
+  display: grid;
+  grid-template-columns: minmax(24ch, 34ch) minmax(0, 1fr);
+  gap: var(--lens-sp-5);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .lens-l3__split { grid-template-columns: minmax(0, 1fr); }
+}
+.lens-l3__tree {
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  padding: var(--lens-sp-2);
+  overflow-x: auto;
+}
+/* the 0-agent turn — the MAJORITY case (DESIGN §10). The collapse is a
+   recorded fact about the turn, so it is stated as one: a bordered line with a
+   real `0`, not an empty column where a chart failed to appear. */
+.lens-l3__noagents {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  margin: var(--lens-sp-4) 0;
+  padding: var(--lens-sp-3) var(--lens-sp-4);
+  border: 1px solid var(--lens-rule);
+  border-left: 3px solid var(--lens-note-line);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface-3);
+  color: var(--lens-ink-dim);
+  max-width: 90ch;
+}
+.lens-l3__noagents-n { font-size: var(--lens-fs-lg); font-weight: 600; color: var(--lens-ink-strong); }
+/* and with lanes and tree gone the timetable takes the whole measure */
+.lens-l3__timetable--full { grid-column: 1 / -1; }
+
+/* one lane group — a workflow run, its orphan splits, or the unlinked set */
+.lens-lanegroup {
+  margin: var(--lens-sp-3) 0;
+  border: 1px solid var(--lens-rule);
+  border-left: 3px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  padding: var(--lens-sp-2) var(--lens-sp-3);
+}
+/* which KIND of group this is — identity, not status. Each group also states
+   its kind in its own title text. */
+.lens-lanegroup--run                { border-left-color: var(--lens-accent); }
+.lens-lanegroup--orphan-running     { border-left-color: var(--lens-p7); }
+.lens-lanegroup--orphan-superseded  { border-left-color: var(--lens-p6); }
+.lens-lanegroup--plain              { border-left-color: var(--lens-p4); }
+.lens-lanegroup--unlinked           { border-left-color: var(--lens-p-overflow); border-left-style: dashed; }
+/* a run merely RESUMED in this turn: link-only, zero tokens counted here */
+.lens-lanegroup--reference {
+  border-style: dashed;
+  background: var(--lens-surface-3);
+}
+.lens-lanegroup__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-2) var(--lens-sp-3);
+  margin: 0 0 var(--lens-sp-2);
+  font-size: var(--lens-fs);
+  font-weight: 600;
+  color: var(--lens-head);
+}
+.lens-lanegroup__sub { font-weight: normal; font-size: var(--lens-fs-sm); color: var(--lens-ink-dim); }
+.lens-lanegroup__count {
+  margin-left: auto;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  font-weight: normal;
+  color: var(--lens-ink-faint);
+}
+.lens-lanegroup__toggle {
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+  color: var(--lens-accent-ink);
+  padding: 0 var(--lens-sp-2);
+}
+.lens-lanegroup__body { overflow-x: auto; }
+/* "0 tokens counted here" — a real, provable zero, printed as one */
+.lens-lanegroup__zero {
+  margin: var(--lens-sp-2) 0 0;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-dim);
+}
+
+/* the lane rows themselves (SVG). The <g> is the row: its parts name their own
+   paint, and the group hands them a themed default so a mark added later can
+   never fall back to UA black on the night ground. */
+.lens-lane { fill: var(--lens-ink); }
+.lens-lane__labellink { cursor: pointer; }
+.lens-lane__label {
+  font-size: 11px;
+  fill: var(--lens-link);
+  font-family: var(--lens-font);
+}
+.lens-lane__labellink:hover .lens-lane__label { text-decoration: underline; }
+/* the main thread's own mini strip, above the groups */
+.lens-lane__label--main { fill: var(--lens-ink-strong); font-weight: 600; }
+
+/* a bar spans two recorded timestamps. Its hue is the agent's recorded state
+   signature — identity, and the same glyph is printed at the end of the lane
+   in words, so no meaning here rests on the hue. */
+.lens-lane__bar { fill: var(--lens-p1); }
+.lens-lane__bar--done        { fill: var(--lens-p3); }
+.lens-lane__bar--error       { fill: var(--lens-error); }
+.lens-lane__bar--running     { fill: var(--lens-p7); }
+.lens-lane__bar--superseded  { fill: var(--lens-p6); }
+.lens-lane__bar--no-result   { fill: var(--lens-p8); }
+.lens-lane__bar--other       { fill: var(--lens-p10); }
+/* nothing recorded a state: the neutral overflow hue, never a ✓-coloured bar */
+.lens-lane__bar--unrecorded  { fill: var(--lens-p-overflow); }
+.lens-lane__bar--main        { fill: var(--lens-mark); }
+/* the queued segment is drawn ONLY where queuedAt and startedAt are both
+   recorded; the hatch is what says "waiting", not a colour */
+.lens-lanes__hatchbar { fill: var(--lens-rule-strong); }
+.lens-lane__queued { stroke: var(--lens-rule-strong); stroke-width: .5; }
+/* ONE recorded timestamp: a tick. No invented width, and it is visibly not a bar */
+.lens-lane__tick { fill: var(--lens-ink-dim); }
+/* no timestamp at all, and end-before-start: both are said in words */
+.lens-lane__none { font-size: 10px; fill: var(--lens-ink-faint); font-family: var(--lens-font); }
+.lens-lane__warn { font-size: 12px; fill: var(--lens-warn); }
+
+.lens-lane__glyph { font-size: 11px; fill: var(--lens-ink-dim); }
+.lens-lane__glyph--done        { fill: var(--lens-ok); }
+.lens-lane__glyph--error       { fill: var(--lens-error); font-weight: 600; }
+.lens-lane__glyph--running     { fill: var(--lens-p7); }
+.lens-lane__glyph--superseded  { fill: var(--lens-p6); }
+.lens-lane__glyph--no-result   { fill: var(--lens-p8); }
+.lens-lane__glyph--other       { fill: var(--lens-p10); }
+.lens-lane__glyph--unrecorded  { fill: var(--lens-ink-faint); }
+
+.lens-lane__tag { font-size: 10px; fill: var(--lens-ink-faint); font-family: var(--lens-font); }
+.lens-lane__tag--cached   { fill: var(--lens-note); }
+.lens-lane__tag--worktree { fill: var(--lens-p4); }
+
+/* the shared time axis above the lanes */
+.lens-axis__tick  { stroke: var(--lens-rule-strong); stroke-width: 1; }
+.lens-axis__label { font-size: 10px; fill: var(--lens-ink-faint); font-family: var(--lens-mono); }
+.lens-axis__tz    { font-size: 10px; fill: var(--lens-ink-faint); font-family: var(--lens-mono); }
+
+/* the collapsed group's occupancy strip prints its max in the text gutter */
+.lens-occupancy__max { font-size: 10px; fill: var(--lens-ink-dim); font-family: var(--lens-mono); }
+
+/* the orchestration tree. The indent IS the recorded lineage depth and is set
+   inline per row; everything else is here. */
+.lens-tree { display: flex; flex-direction: column; }
+.lens-tree__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-2);
+  padding: 1px var(--lens-sp-2);
+  border-bottom: 1px solid var(--lens-rule);
+  font-size: var(--lens-fs-sm);
+  min-width: 0;
+}
+.lens-tree__row:last-child { border-bottom: 0; }
+.lens-tree__row:hover { background: var(--lens-surface-2); }
+/* the selected node drives the timetable beside it — a fill AND a rule, so the
+   selection survives a colour-blind read and a greyscale print */
+.lens-tree__row--sel { background: var(--lens-accent-soft); }
+.lens-tree__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lens-tree__label--sel { font-weight: 600; color: var(--lens-ink); }
+/* which kind of node this row is. The five GROUP kinds carry the same left
+   rule as their lane group above, so the tree and the Gantt read as one thing;
+   an agent row is a leaf and carries none. */
+.lens-tree__row--main     .lens-tree__label { font-weight: 600; }
+.lens-tree__row--workflow .lens-tree__label { color: var(--lens-accent-ink); }
+.lens-tree__row--phase    .lens-tree__label { color: var(--lens-head); }
+.lens-tree__row--reference .lens-tree__label { color: var(--lens-ink-faint); font-style: italic; }
+.lens-tree__row--agent    .lens-tree__label { color: var(--lens-ink); }
+.lens-tree__row--run               { box-shadow: inset 2px 0 0 var(--lens-accent); }
+.lens-tree__row--orphan-running    { box-shadow: inset 2px 0 0 var(--lens-p7); }
+.lens-tree__row--orphan-superseded { box-shadow: inset 2px 0 0 var(--lens-p6); }
+.lens-tree__row--plain             { box-shadow: inset 2px 0 0 var(--lens-p4); }
+.lens-tree__row--unlinked          { box-shadow: inset 2px 0 0 var(--lens-p-overflow); }
+/* the selection wins over the kind rule: it is the state the reader set */
+.lens-tree__row--sel { box-shadow: inset 2px 0 0 var(--lens-accent); }
+.lens-tree__count {
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+}
+.lens-tree__cost,
+.lens-tree__wall {
+  margin-left: auto;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-dim);
+  white-space: nowrap;
+}
+.lens-tree__wall { margin-left: 0; }
+.lens-tree__glyph { font-family: var(--lens-mono); cursor: help; }
+.lens-tree__glyph--done       { color: var(--lens-ok); }
+.lens-tree__glyph--error      { color: var(--lens-error); font-weight: 600; }
+.lens-tree__glyph--running    { color: var(--lens-p7); }
+.lens-tree__glyph--superseded { color: var(--lens-p6); }
+.lens-tree__glyph--no-result  { color: var(--lens-p8); }
+.lens-tree__glyph--other      { color: var(--lens-p10); }
+.lens-tree__glyph--unrecorded { color: var(--lens-ink-faint); }
+/* a recorded parentAgentId that closes on itself — shown unnested, and said */
+.lens-tree__cycle { flex: 1 0 100%; font-size: var(--lens-fs-xs); }
+
+/* the prompt card — the reader's entry point into the turn */
+.lens-prompt {
+  margin: var(--lens-sp-4) 0;
+  border: 1px solid var(--lens-rule);
+  border-left: 3px solid var(--lens-accent);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  padding: var(--lens-sp-3) var(--lens-sp-4);
+}
+.lens-prompt__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-2) var(--lens-sp-3);
+  margin-bottom: var(--lens-sp-2);
+  font-size: var(--lens-fs-sm);
+}
+.lens-prompt__idx { font-weight: 600; color: var(--lens-head); }
+.lens-prompt__at { font-family: var(--lens-mono); font-size: var(--lens-fs-xs); color: var(--lens-ink-dim); }
+/* the recorded prompt head. The server ships heads at ≤220 chars — this wraps
+   inside its measure and never runs off the page. */
+.lens-prompt__head {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  max-width: 78ch;
+  line-height: 1.6;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+}
+.lens-prompt__full { margin-top: var(--lens-sp-3); }
+.lens-prompt__full[hidden] { display: none; }
+
+/* --------------------------------------------------------------------------
+   L4 — the view bar and the event strip
+   -------------------------------------------------------------------------- */
+
+.lens-l4__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lens-sp-3);
+}
+/* the tab strip inside the bar keeps its own bottom rule as the bar's rule */
+.lens-l4__bar .lens-tabs { flex: 1 1 auto; margin-bottom: var(--lens-sp-3); }
+
+/* the L4 fact groups, and their expand-all control */
+.lens-factgroups { display: flex; flex-direction: column; gap: var(--lens-sp-2); }
+.lens-factgroup > .lens-details__summary { color: var(--lens-head); }
+.lens-disclosures {
+  display: flex;
+  gap: var(--lens-sp-2);
+  margin: var(--lens-sp-2) 0;
+}
+
+/* the event strip's three lanes (SVG) */
+.lens-strip__lane { font-size: 10px; fill: var(--lens-ink-faint); font-family: var(--lens-font); }
+/* a tool span: tool_use → tool_result, paired by recorded id */
+.lens-strip__span { fill: var(--lens-p2); }
+.lens-strip__span--error { fill: var(--lens-error); }
+/* a tick is one recorded instant — no width was invented for it */
+.lens-strip__tick { fill: var(--lens-ink-dim); }
+.lens-strip__tick--thinking { fill: var(--lens-p4); }
+.lens-strip__tick--text     { fill: var(--lens-p3); }
+/* a tool_use no tool_result carries the id of: tick + ∅, never a span */
+.lens-strip__tick--unmatched { fill: var(--lens-warn); }
+.lens-strip__empty { font-size: 10px; fill: var(--lens-warn); }
+.lens-strip__image { font-size: 11px; fill: var(--lens-p7); }
+
+/* --------------------------------------------------------------------------
+   L5 — the locator bar, the rendered block, patches and cross-references
+   -------------------------------------------------------------------------- */
+
+.lens-l5__locbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-2) var(--lens-sp-3);
+  padding-bottom: var(--lens-sp-3);
+  margin-bottom: var(--lens-sp-4);
+  border-bottom: 1px solid var(--lens-rule);
+}
+.lens-l5__at { font-family: var(--lens-mono); font-size: var(--lens-fs-xs); color: var(--lens-ink-dim); }
+.lens-l5__raw { margin-top: var(--lens-sp-2); }
+/* the all-blocks listing, when no block is addressed */
+.lens-l5__blockrow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: var(--lens-sp-1) 0;
+  border-bottom: 1px solid var(--lens-rule);
+  min-width: 0;
+}
+.lens-l5__peek {
+  color: var(--lens-ink-faint);
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* which KIND of block this card holds — the same identity set as the timetable
+   chips, and the card's heading says the kind in words above it */
+.lens-block--prompt      { border-left-color: var(--lens-p1); }
+.lens-block--text        { border-left-color: var(--lens-p3); }
+.lens-block--thinking    { border-left-color: var(--lens-p4); }
+.lens-block--tool_use    { border-left-color: var(--lens-p2); }
+.lens-block--tool_result { border-left-color: var(--lens-p6); }
+.lens-block--image       { border-left-color: var(--lens-p7); }
+.lens-block--fallback    { border-left-color: var(--lens-error); }
+.lens-block--event       { border-left-color: var(--lens-p10); }
+.lens-block--unknown     { border-left-color: var(--lens-p-overflow); border-left-style: dashed; }
+/* a folded tool_use input sits inside the block card, not beside it */
+.lens-block__input { margin: var(--lens-sp-3) 0 0; }
+
+/* structuredPatch — the recorded hunks, verbatim */
+.lens-patch { margin-top: var(--lens-sp-4); }
+.lens-patch__hunk {
+  margin: var(--lens-sp-2) 0;
+  padding: var(--lens-sp-2) var(--lens-sp-3);
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface-3);
+  overflow-x: auto;
+  font-size: var(--lens-fs-sm);
+  line-height: 1.45;
+}
+.lens-patch__head { display: block; color: var(--lens-ink-faint); font-weight: 600; }
+/* Added and removed lines. This brand has NO status green and NO status red,
+   so the two are told apart by their recorded +/- prefix (which is part of the
+   line text), by a left rule, and by a wash — never by hue alone. */
+.lens-patch__line { display: block; padding-left: var(--lens-sp-2); }
+.lens-patch__line--add {
+  background: var(--lens-ok-soft);
+  box-shadow: inset 2px 0 0 var(--lens-ok);
+  color: var(--lens-ink);
+}
+.lens-patch__line--del {
+  background: var(--lens-error-soft);
+  box-shadow: inset 2px 0 0 var(--lens-error);
+  color: var(--lens-ink);
+  text-decoration: line-through;
+  text-decoration-color: var(--lens-error-line);
+}
+.lens-patch__line--ctx { color: var(--lens-ink-dim); }
+
+/* persisted output — the three recorded reference forms (SPEC §8) */
+.lens-spill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: var(--lens-sp-2) 0;
+  border-bottom: 1px solid var(--lens-rule);
+}
+.lens-spill__form {
+  font-size: var(--lens-fs-xs);
+  color: var(--lens-ink-faint);
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  padding: 0 var(--lens-sp-2);
+  white-space: nowrap;
+}
+.lens-spill__path { overflow-wrap: anywhere; min-width: 0; }
+
+/* tool_use ↔ tool_result cross-references */
+.lens-xref {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: var(--lens-sp-1) 0;
+  min-width: 0;
+}
+.lens-xref__label {
+  flex: 0 0 auto;
+  min-width: 12ch;
+  font-size: var(--lens-fs-sm);
+  color: var(--lens-ink-faint);
+}
+
+/* --------------------------------------------------------------------------
+   find — the corpus scan
+   -------------------------------------------------------------------------- */
+
+.lens-find__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lens-sp-3);
+  margin-bottom: var(--lens-sp-4);
+}
+.lens-find__q { min-width: 34ch; flex: 1 1 34ch; }
+.lens-find__scope { min-width: 22ch; font-family: var(--lens-mono); font-size: var(--lens-fs-sm); }
+.lens-find__progress { margin-bottom: var(--lens-sp-3); }
+.lens-find__status { margin: var(--lens-sp-2) 0 0; color: var(--lens-ink-dim); font-size: var(--lens-fs-sm); }
+.lens-find__skips { max-width: 90ch; }
+.lens-find__results { display: flex; flex-direction: column; gap: var(--lens-sp-4); }
+
+/* one session's matches, in scan order — nothing here is ranked */
+.lens-find__group {
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  padding: var(--lens-sp-2) var(--lens-sp-3);
+}
+.lens-find__grouphead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  margin: 0 0 var(--lens-sp-2);
+  font-size: var(--lens-fs);
+  font-weight: 600;
+  color: var(--lens-head);
+}
+.lens-find__groupcount {
+  margin-left: auto;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  font-weight: normal;
+  color: var(--lens-ink-faint);
+}
+.lens-find__grouprows { display: flex; flex-direction: column; }
+.lens-find__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lens-sp-3);
+  padding: var(--lens-sp-1) 0;
+  border-bottom: 1px solid var(--lens-rule);
+  min-width: 0;
+}
+.lens-find__row:last-child { border-bottom: 0; }
+.lens-find__loc { flex: 0 0 auto; font-family: var(--lens-mono); font-size: var(--lens-fs-xs); }
+.lens-find__at { flex: 0 0 auto; font-family: var(--lens-mono); font-size: var(--lens-fs-xs); color: var(--lens-ink-faint); }
+/* the recorded context window around the match, verbatim and on one line */
+.lens-find__ctx {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--lens-ink-dim);
+}
+.lens-find__more { margin-top: var(--lens-sp-4); }
+
+/* --------------------------------------------------------------------------
+   the session inventory — the completeness proof
+   -------------------------------------------------------------------------- */
+
+.lens-inv__censuses { display: flex; flex-direction: column; gap: var(--lens-sp-2); }
+/* the surface cell of a files-ledger row */
+.lens-x__surface { font-size: var(--lens-fs-sm); color: var(--lens-ink-dim); }
+
+/* --------------------------------------------------------------------------
+   the audit — "prove it"
+   -------------------------------------------------------------------------- */
+
+.lens-audit__progress { margin-bottom: var(--lens-sp-3); }
+.lens-audit__status { margin: var(--lens-sp-2) 0 0; color: var(--lens-ink-dim); font-size: var(--lens-fs-sm); }
+.lens-audit__verdict { margin-bottom: var(--lens-sp-4); }
+/* the headline verdict. ✓ / ✗ / … is the signal and the sentence spells the
+   counts out; the tone only agrees with what the glyph already says. */
+.lens-audit__badge {
+  display: inline-block;
+  margin: 0;
+  padding: var(--lens-sp-2) var(--lens-sp-4);
+  border: 1px solid var(--lens-rule-strong);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+  font-size: var(--lens-fs-md);
+  font-weight: 600;
+}
+.lens-audit__badge--pass    { border-color: var(--lens-ok-line);    background: var(--lens-ok-soft);    color: var(--lens-ok); }
+.lens-audit__badge--fail    { border-color: var(--lens-error-line); background: var(--lens-error-soft); color: var(--lens-error); }
+.lens-audit__badge--pending { border-style: dashed; color: var(--lens-ink-dim); }
+/* the per-row ✓ / ✗ column */
+.lens-audit__mark {
+  width: 3ch;
+  text-align: center;
+  font-family: var(--lens-mono);
+  font-weight: 600;
+}
+/* the expanded evidence row: a full-width well under the row it belongs to */
+.lens-audit__evidence > td { background: var(--lens-surface-3); }
+.lens-audit__evidence[hidden] { display: none; }
+/* what A === B proves, and what it does not */
+.lens-proof {
+  max-width: 90ch;
+  padding: var(--lens-sp-3) var(--lens-sp-4);
+  border: 1px solid var(--lens-rule);
+  border-left: 3px solid var(--lens-accent);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface);
+}
+.lens-proof p { margin: 0 0 var(--lens-sp-2); }
+
+/* --------------------------------------------------------------------------
+   settings
+   -------------------------------------------------------------------------- */
+
+.lens-settings__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lens-sp-3);
+  margin: var(--lens-sp-3) 0;
+}
+.lens-settings__dir { flex: 1 1 44ch; font-family: var(--lens-mono); font-size: var(--lens-fs-sm); }
+.lens-settings__preview {
+  margin-top: var(--lens-sp-2);
+  padding: var(--lens-sp-2) var(--lens-sp-3);
+  border: 1px solid var(--lens-rule);
+  border-radius: var(--lens-radius);
+  background: var(--lens-surface-3);
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-sm);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+   disclosure parts shared by every migrated expandable
+   -------------------------------------------------------------------------- */
+
+.lens-details__label { flex: 1 1 auto; min-width: 0; }
+/* the size of what is folded, stated BEFORE it is opened */
+.lens-details__count {
+  flex: 0 0 auto;
+  font-family: var(--lens-mono);
+  font-size: var(--lens-fs-xs);
+  font-weight: normal;
+  color: var(--lens-ink-faint);
+}
+
+/* the L4 tab strip marks its active tab --on, l4's older strip used --current
+   and the base rule was written for .is-active. All three are the SAME state:
+   kept as aliases so no emission site can silently lose its marker. */
+.lens-tabs__tab.is-active,
+.lens-tabs__tab--on,
+.lens-tabs__tab--current { font-weight: 600; }
+
+/* the collapsed raw-JSON box at L5 — the rendered block above it is primary */
+.lens-l5__rawbox { margin-top: 0; }
+
+/* --------------------------------------------------------------------------
+   the document heading
+
+   The visible page title is the crumb rail, which is a <nav> and cannot carry
+   an <h1>. The shell therefore holds one, written from the crumb chain on
+   every render, and hides it VISUALLY only — it stays in the accessibility
+   tree, in the document outline and in find-in-page.
+   -------------------------------------------------------------------------- */
+
+.lens-h1 {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   KAN-105 PASS 6 — THE TEA HOUSE AESTHETIC.
+
+   Source of truth: Brand Designs/Aaron Orelup/brand-board.html. Nothing here
+   invents a colour, a face or a curve; it spends the ones the board names, on
+   a data-dense reader.
+
+   This section sits LAST on purpose. Type, shape and motion are cross-cutting
+   — a title's face has to beat the per-title `font-weight`, a pill's radius
+   has to beat the component's own `border-radius` — and every rule below is a
+   single class at (0,1,0) or (0,1,1). Putting them here means source order,
+   not specificity inflation, does the deciding, and it keeps the whole
+   aesthetic legible as one block instead of 40 scattered overrides.
+
+   What is NOT here, and why:
+     * no figure changes their face. Every number in this app is mono at a
+       fixed `ch` width because DESIGN §7 shows `—` pips AT FINAL WIDTHS while
+       a value is loading; a proportional display face on the statbar cost
+       figure would make the pip and the resolved number different widths and
+       the header would jump on every resolve. Constraint 3 wins over the
+       aesthetic here — the money moment lands on the cost PANEL's title.
+     * no keyframe animation, anywhere. Nothing in this app animates at rest,
+       which is the brand's own rule, and this pass keeps that count at zero.
+     * no CSS petals.
+   ========================================================================== */
+
+/* -------------------------------------------------------- 6.1 the display face
+
+   Zen Maru Gothic 700, NEGATIVE tracking, gold — the brand's one typographic
+   signature, and the counterweight to the wide-tracked eyebrows below. Every
+   gold title in the app is in this list (the set is the one pass 2 painted
+   gold, plus the three per-view titles pass 3 added: the L0 day header, the L3
+   lane-group title and the L2 session title). The family degrades to the Karla
+   stack and then to system-ui and nothing in the layout depends on which
+   arrives: these are all short titles in normal flow.
+
+   Two deliberate absences: `.lens-error__title`, which prints a recorded error
+   name and stays monospace like every other recorded string here, and
+   `.lens-inv__h`, which is small and positively tracked and belongs to the
+   eyebrow tier below, not to this one. */
+
+.lens-section__title,
+.lens-block__title,
+.lens-card__title,
+.lens-cost__title,
+.lens-statbar__panel-title,
+.lens-sheet__title,
+.lens-ledger__h,
+.lens-dayhead__title,
+.lens-lanegroup__title,
+.lens-facts__cell--title .lens-facts__value,
+.lens-md h1,
+.lens-md h2,
+.lens-md h3,
+.lens-md h4 {
+  font-family: var(--lens-font-display);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  text-wrap: pretty;
+}
+/* the largest take the deeper end of the brand's tracking range */
+.lens-section__title,
+.lens-dayhead__title,
+.lens-facts__cell--title .lens-facts__value { letter-spacing: -.015em; }
+
+/* ------------------------------------------------------------ 6.2 the eyebrow
+
+   Brand spec: 10.5-12.5px, UPPERCASE, tracking 0.08-0.14em, weight 600, gold.
+   These are the app's standing micro-labels — the word ABOVE a recorded value,
+   never the value, never a sentence. `--lens-eyebrow` is the brand's --pc-gold
+   deepened for 11px text: 5.08-6.33:1 across the eleven light grounds,
+   6.20-7.69:1 across the dark ones (derivation on --pc-gold-ink). It reads as
+   the olive side of the gold family, one step off the heading gold — which is
+   how the brand board separates the two.
+
+   Case is the only thing that changes: not one character of recorded or
+   written text is touched, so every test that reads textContent is unmoved. */
+
+.lens-statbar__label,
+.lens-facts__label,
+.lens-block__sub,
+.lens-inv__h,
+.lens-md h5,
+.lens-md h6 {
+  font-family: var(--lens-font-ui);
+  font-size: var(--lens-fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--lens-eyebrow);
+}
+
+/* A TABLE HEADER TAKES THE EYEBROW'S SHAPE BUT NOT ITS GOLD. The brand board
+   specifies both, separately: `.eyebrow` is gold, and its own `th` rule is
+   uppercase + 0.08em + 600 in the QUIET ink. This app has hundreds of column
+   headers on every page, and painting them gold would drown the heading
+   signature it is supposed to support. Shape from the brand, colour from the
+   board's own table.
+
+   Tracking is the LOW end of the range (0.08em) and the size drops 12px->11px
+   to pay for the width caps cost. Measured on the two widest tables in the
+   app: the L4 timetable moved not one pixel (its columns are content-bound),
+   and the L0 projects vtable grew 67px in total across 16 columns — two date
+   columns at +25px and the rest at 0-8px — on a 1,627px table, still inside
+   the content measure at 1280px and 1920px alike, with `.lens-vtable__scroll`
+   taking any overflow into its own box rather than the page's. */
+.lens-table thead th,
+.lens-vtable__head th {
+  font-size: var(--lens-fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+/* -------------------------------------------------------------- 6.3 the prose
+
+   Brand law: "every prose paragraph is Georgia, ≤620px, line-height 1.68".
+   This is the ONE place in the app that qualifies — `.lens-md`, the rendered
+   markdown a reader actually reads. `.lens-body__raw` stays mono/pre-wrap at
+   78ch and is untouched: recorded raw text is verbatim evidence, not prose,
+   and its column alignment is part of what it records.
+
+   The brand board's blockquote spec is not implemented because lib/text.mjs
+   renderMarkdown() emits no blockquote — it emits p, h1-h6, ul/ol/li, a,
+   strong, em, code and one fenced pre, and every one of those has a rule. */
+
+.lens-md {
+  max-width: var(--lens-measure-prose);
+  font-family: var(--lens-font-prose);
+  font-size: var(--lens-fs-prose);
+  line-height: var(--lens-lh-prose);
+}
+.lens-md p { margin: 0 0 var(--lens-sp-5); }
+.lens-md a { text-underline-offset: 3px; }
+/* mono inside a serif measure needs shrinking or it shouts — the board's 0.88em */
+.lens-md code { font-size: .88em; }
+/* a fenced block is code, not prose: back to the app's own code idiom, and it
+   keeps scrolling itself rather than widening the reading column */
+.lens-md__code {
+  max-width: var(--lens-measure-prose);
+  font-size: var(--lens-fs);
+  line-height: 1.45;
+}
+/* The fold clamp counts RENDERED lines, and the rendered half now leads at
+   1.68 while the raw half leads at 1.6 — so the two halves need their own
+   arithmetic to fold at the same LINE COUNT, which is what the button's label
+   promises ("the fold shows the first 40 rendered lines"). 40 stays equal to
+   lib/text.mjs FOLD_LINES; if one moves the other must. */
+.lens-body--folded .lens-body__md { max-height: calc(40 * var(--lens-lh-prose) * 1em); }
+
+/* --------------------------------------------------------------- 6.4 the shape
+
+   The brand's radius table, spent where the brand spends it. --lens-radius
+   (3px) keeps its name and its job as the DATA radius — tables, timetables,
+   timelines, scroll boxes, the tight boxes that hold rows — because ballooning
+   a data surface makes it read as a card and costs vertical space on every
+   row. Nothing below changes a sticky offset, a scroll box or a `ch` width. */
+
+/* pills: every button, chip, tag, toggle and tab. Horizontal padding goes up
+   one step with the radius, or the cap eats the first character. */
+.lens-btn,
+.lens-theme__btn,
+.lens-return,
+.lens-crumbs__up,
+.lens-groupby__opt,
+.lens-statbar__group-btn,
+.lens-body__fold,
+.lens-json__copy,
+.lens-chip,
+.lens-tag,
+.lens-badge,
+.lens-kind,
+.lens-audit__badge,
+.lens-scope__sigma,
+.lens-vtable__sigma-group { border-radius: var(--lens-radius-pill); }
+
+/* the full-size controls take one more step of inline padding … */
+.lens-btn,
+.lens-body__fold,
+.lens-theme__btn,
+.lens-return,
+.lens-crumbs__up,
+.lens-groupby__opt,
+.lens-statbar__group-btn,
+.lens-scope__sigma-btn,
+.lens-vtable__sigma,
+.lens-chip { padding-inline: var(--lens-sp-4); }
+/* … and the 11px markers take a smaller one, or they stop being markers */
+.lens-tag,
+.lens-badge,
+.lens-kind { padding-inline: var(--lens-sp-3); }
+
+/* the view tabs become pills that SIT ON the strip's rule instead of merging
+   into it. The state rules above already carry the fill and the weight; only
+   the border colour has to be restated, because a pill has four sides. */
+.lens-tabs { padding-bottom: var(--lens-sp-2); }
+.lens-tabs__tab {
+  border: 1px solid transparent;
+  border-radius: var(--lens-radius-pill);
+}
+.lens-tabs__tab.is-active,
+.lens-tabs__tab--on,
+.lens-tabs__tab--current { border-color: var(--lens-rule-strong); }
+
+/* floating surfaces — the only things in the app that are genuinely OVER the
+   page rather than in it */
+.lens-statbar__panel,
+.lens-cost__panel,
+.lens-sheet__panel,
+.lens-lightbox__panel,
+.lens-timeline__info { border-radius: var(--lens-radius-float); }
+
+/* list-row hovers and small readouts */
+.lens-statbar__cell,
+.lens-contrib__row,
+.lens-tree__row { border-radius: var(--lens-radius-row); }
+
+/* code blocks */
+.lens-md__code,
+.lens-card__pre,
+.lens-raw__blob,
+.lens-patch__hunk { border-radius: var(--lens-radius-code); }
+
+/* inline code and keycaps */
+.lens-code,
+code,
+kbd { border-radius: var(--lens-radius-inline); }
+
+/* THE DELIBERATE SQUARE (brand ship checklist: "at least one square-cornered
+   element among the pills"). The media wells are it, and they were already
+   square before this pass — the lightbox's image well states it outright and
+   the contact-sheet tiles have never carried a radius. Restated here so a
+   later radius sweep cannot quietly round them off. */
+.lens-lightbox__well,
+.lens-contact__box { border-radius: 0; }
+
+/* -------------------------------------------------------------- 6.5 the motion
+
+   Three durations, one curve, and NOTHING that runs at rest. Every transition
+   below is entered from a pointer, a key or a click; there is no keyframe
+   animation in this file and no element animates without a user causing it.
+   The count of things animating on an idle page is zero, and that is the
+   number the brand asks for ("don't animate more than one thing at rest").
+   @media (prefers-reduced-motion: reduce) at the foot of this file removes all
+   of it with `transition: none !important`. */
+
+/* hovers — 180ms, flat ease, colour properties only (no layout, no paint of
+   anything expensive). Deliberately NOT on the row sets: a 300-row timetable
+   or a virtualised vtable would carry a transition on every row, and a
+   scroll-driven hover change across hundreds of rows is exactly the kind of
+   repaint SPEC §11 exists to prevent. Controls only. */
+.lens-btn,
+.lens-theme__btn,
+.lens-return,
+.lens-crumbs__up,
+.lens-groupby__opt,
+.lens-statbar__group-btn,
+.lens-statbar__cell,
+.lens-body__fold,
+.lens-json__copy,
+.lens-scope__sigma-btn,
+.lens-vtable__sigma,
+.lens-tabs__tab,
+.lens-cost__figure,
+.lens-contrib__row,
+a.lens-chip {
+  transition: background-color var(--lens-dur-hover) ease,
+              border-color var(--lens-dur-hover) ease,
+              color var(--lens-dur-hover) ease;
+}
+
+/* the disclosure marker — a structural move, so it takes the brand curve. At
+   the hover duration rather than the full 380ms: 380ms on a caret reads as lag,
+   not as ease. */
+.lens-details > summary::before {
+  transition: transform var(--lens-dur-hover) var(--lens-ease-move);
+}
+
+/* The two overlays — the brand's structural move, 380ms on its own curve.
+   Both are toggled by the `hidden` attribute over `display: none`, so the
+   entry has to be expressed as a starting style; a browser without
+   @starting-style simply shows them, which is what happened before this pass.
+
+   TRANSFORM ONLY, AND DELIBERATELY NOT OPACITY. A fade-in means the panel is
+   invisible on its first frames, and an entrance that can leave a reader
+   staring at nothing is not a trade this app makes — a throttled tab, a frozen
+   compositor or any future browser quirk would turn "the image opens" into "the
+   image is missing". Starting at full opacity and 8px low, the overlay is
+   readable and clickable from frame one and the motion is pure decoration on
+   top of a state that is already correct. */
+.lens-lightbox__panel,
+.lens-sheet__panel {
+  transition: transform var(--lens-dur-move) var(--lens-ease-move);
+}
+@starting-style {
+  .lens-lightbox:not([hidden]) .lens-lightbox__panel,
+  .lens-sheet:not([hidden]) .lens-sheet__panel { transform: translateY(8px); }
+}
+
+/* ------------------------------------------------------------- 6.6 the blossom
+
+   Brand law: pink in ≤2 places, never text, never a resting surface — "it
+   appears on interaction or in motion". ONE of the two slots is spent, and it
+   is the placement the brand board itself demonstrates: the appearance control
+   fills with blossom under the pointer, with the ink colour on top (7.65:1, so
+   the label is still readable while it is pink). Pink coverage on a page at
+   rest is 0%.
+
+   The second slot is deliberately left unspent, and ::selection keeps
+   --lens-rule-strong exactly as the board does. The ACTIVE appearance button
+   is excluded: it carries the accent fill that says which mode is chosen, and
+   a hover must not overwrite a state. */
+.lens-theme__btn:hover:not(.is-active) {
+  background: var(--lens-blossom);
+  border-color: var(--lens-on-blossom);
+  color: var(--lens-on-blossom);
+}
+
+/* ==========================================================================
+   INTENTIONALLY UNSTYLED HOOKS
+
+   The §0.6 measurement (undefined lens-* classes emitted by web/js/**) is at
+   ZERO except for the entries below. Each is here for a stated reason; a new
+   name appearing in that count is a gap, not an entry for this list.
+
+     lens-json__          NOT A CLASS. components/jsonview.mjs builds its part
+                          names by concatenation — `lens-json__${part}` — and
+                          the measurement's regex captures the literal prefix
+                          out of the template. The real classes it produces
+                          (lens-json__key, __string, __number, __toggle, __more)
+                          are all defined above. Nothing emits the bare prefix.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   print + reduced motion
+
+   Pass 6 added motion where there was almost none: a 180ms colour transition
+   on the controls, the 380ms brand curve on the two overlays and the
+   disclosure marker, and the 300ms appearance cross-fade on the two root
+   boxes. Every one of them is entered from a user action — nothing in this
+   file animates at rest, and there is still no `@keyframes` anywhere in the
+   app. The blanket rule below therefore removes ALL of it in one line,
+   including the @starting-style entrance (with no transition to run, the
+   overlay simply appears, which is what it did before pass 6).
    -------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -927,7 +3797,8 @@ kbd {
 
 @media print {
   .lens-head { position: static; }
-  .lens-sheet, .lens-reload, .lens-skip { display: none !important; }
+  /* the lightbox is a screen layer over a gallery; the gallery is what prints */
+  .lens-sheet, .lens-lightbox, .lens-reload, .lens-skip { display: none !important; }
   .lens-vtable__scroll { max-height: none; overflow: visible; }
   /* R17: the same "print what is mounted" treatment for the L4 raw
      virtualiser. `height` (not max-height) is what clips it, and the
@@ -939,4 +3810,17 @@ kbd {
   .lens-raw--virt   { height: auto; max-height: none; overflow: visible; }
   .lens-raw__spacer { height: auto !important; }
   .lens-raw__block  { position: static; }
+
+  /* Pass 2, same rule: what is on the page prints in full. A folded body
+     prints unfolded (the fold is a screen affordance and its button is not a
+     printable thing), and the raw/markdown toggle above it goes with it.
+     The measure and the wrapping stay — that is what makes it readable. */
+  .lens-body--folded .lens-body__raw,
+  .lens-body--folded .lens-body__md { max-height: none; overflow: visible; border-bottom: 0; }
+  .lens-body__fold,
+  .lens-body__tools { display: none !important; }
+  .lens-md__code    { overflow: visible; }
+  .lens-logs        { max-height: none; overflow: visible; }
+  /* a native disclosure prints as the reader left it; nothing forces it open */
+  .lens-details     { break-inside: avoid; }
 }

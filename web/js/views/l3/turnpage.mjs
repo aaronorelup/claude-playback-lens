@@ -135,7 +135,11 @@ export async function renderTurn(ctx) {
   if (zeroAgents) {
     // DESIGN §3: 0-agent turns collapse lanes+tree entirely; the timetable
     // takes full width with an explicit `0 agents`.
-    body.appendChild(h('p', { class: 'lens-l3__noagents', text: '0 agents — this turn spawned none, so the lane chart and orchestration tree are omitted (they would have nothing to show).' }));
+    // A REAL zero, printed as one (house rule 3) — this collapse is a recorded
+    // fact about the turn, not a failure to draw something.
+    body.appendChild(h('p', { class: 'lens-l3__noagents' },
+      h('span', { class: 'lens-num lens-l3__noagents-n', text: '0' }),
+      h('span', { text: ' agents — this turn spawned none, so the lane chart and orchestration tree are omitted (they would have nothing to show). The timetable below takes the full width.' })));
     const pane = h('div', { class: 'lens-l3__timetable lens-l3__timetable--full' });
     body.appendChild(section('timetable · main-thread rows of this turn', pane));
     if (ctx.stale) return;

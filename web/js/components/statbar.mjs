@@ -24,6 +24,7 @@ import {
   formatLocalTime, tokenCategories, isKnown, UNKNOWN, unknownNode, pip,
 } from '../format.mjs';
 import { chipsRow } from './chips.mjs';
+import { withReturn } from '../lib/links.mjs';
 import { costfigure } from './costfigure.mjs';
 
 /** The fixed cell order. Views cannot reorder it — that is the point. */
@@ -91,7 +92,10 @@ export function statbar(el, props) {
     for (const c of counts) cellsEl.appendChild(countCell(c));
   }
 
-  function sep() { return h('span', { class: 'lens-statbar__sep', 'aria-hidden': 'true' }, '|'); }
+  // A group divider is a RULE, not a character. The pipe glyph it used to
+  // print sat at ~1.9:1 against the band and read as a stray value; the class
+  // now draws a full-height 1px border and carries no text at all.
+  function sep() { return h('span', { class: 'lens-statbar__sep', role: 'separator', 'aria-orientation': 'vertical' }); }
 
   function cellButton(key, className, children, title) {
     const btn = h('button', {
@@ -318,8 +322,10 @@ export function statbar(el, props) {
       const share = total > 0 && isKnown(r.value) ? r.value / total : 0;
       const bar = h('span', { class: 'lens-contrib__bar' });
       bar.setAttribute('style', `width:${(share * 100).toFixed(2)}%`);
+      // D11: the contribution panel is a list-like view too — its drill links
+      // carry this page's hash, so the child offers a way back to it.
       const label = r.href
-        ? h('a', { class: 'lens-contrib__label', href: r.href, 'data-lens-drill': '' }, r.label)
+        ? h('a', { class: 'lens-contrib__label', href: withReturn(r.href), 'data-lens-drill': '' }, r.label)
         : h('span', { class: 'lens-contrib__label' }, r.label);
       list.appendChild(h('li', { class: 'lens-contrib__row', 'data-lens-row': '' },
         label,
@@ -350,12 +356,12 @@ export function statbar(el, props) {
     const a = agg();
     const thinking = a && a.thinking;
     return h('div', { class: 'lens-statbar__panel-body' },
-      h('table', { class: 'lens-table lens-table--tight' },
+      h('div', { class: 'lens-tablewrap' }, h('table', { class: 'lens-table lens-table--tight' },
         h('thead', null, h('tr', null, h('th', null, 'category'), h('th', { class: 'lens-num-col' }, 'tokens'), h('th', null, 'note'))),
         h('tbody', null, ...rows.map(([label, v, note]) => h('tr', null,
           h('td', null, label),
           h('td', { class: 'lens-num-col' }, isKnown(v) ? formatTokens(v) : unknownNode('not recorded')),
-          h('td', { class: 'lens-statbar__note' }, note || ''))))),
+          h('td', { class: 'lens-statbar__note' }, note || '')))))),
       thinking ? h('p', { class: 'lens-statbar__panel-note' },
         `${isKnown(thinking.tokens) ? formatTokens(thinking.tokens) : UNKNOWN} thinking tokens recorded on `
         + `${formatInt(thinking.recordedOn)} of ${formatInt((thinking.recordedOn || 0) + (thinking.notRecordedOn || 0))} rows · `
@@ -390,12 +396,12 @@ export function statbar(el, props) {
     const parallel = isKnown(span.ms) && isKnown(sumChildren) && span.ms > 0
       ? (sumChildren / span.ms) : null;
     return h('div', { class: 'lens-statbar__panel-body' },
-      h('table', { class: 'lens-table lens-table--tight' },
+      h('div', { class: 'lens-tablewrap' }, h('table', { class: 'lens-table lens-table--tight' },
         h('thead', null, h('tr', null, h('th', null, 'figure'), h('th', { class: 'lens-num-col' }, 'value'), h('th', null, 'definition'))),
         h('tbody', null, ...rows.map(([label, v, note]) => h('tr', null,
           h('td', null, label),
           h('td', { class: 'lens-num-col' }, isKnown(v) ? formatDuration(v) : unknownNode('not recorded for this scope')),
-          h('td', { class: 'lens-statbar__note' }, note))))),
+          h('td', { class: 'lens-statbar__note' }, note)))))),
       span.from || span.to ? h('p', { class: 'lens-statbar__panel-note' },
         'from ', isKnown(span.from) ? formatLocalTime(span.from) : UNKNOWN,
         ' to ', isKnown(span.to) ? formatLocalTime(span.to) : UNKNOWN) : null,

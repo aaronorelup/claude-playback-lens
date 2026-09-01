@@ -216,6 +216,50 @@ export function headerFacts(ag, { worktreeOnDisk = null } = {}) {
   return facts;
 }
 
+/* ================================================ header-fact grouping ==
+ * The ~20 header facts arrive as one undifferentiated run. This partitions
+ * them into the five groups DESIGN §3 L4 asks the page to show, keeping
+ * headerFacts()' order INSIDE each group.
+ *
+ * The mapping is by recorded LABEL, and it is exhaustive by construction: a
+ * label this table does not name falls into `provenance` rather than
+ * disappearing, so a fact added to headerFacts() can never be silently
+ * dropped from the page. `tools` is filled by the census facts the render
+ * builds separately and is returned empty here.
+ */
+
+export const FACT_GROUPS = [
+  { key: 'identity', label: 'identity', open: true, labels: ['label', '[AGENT] tag', 'agentId', 'agentType'] },
+  {
+    key: 'lifecycle',
+    label: 'lifecycle',
+    open: true,
+    labels: ['state', 'phase', 'attempt', 'queuedAt', 'startedAt (manifest)', 'first timestamp',
+      'last timestamp', 'wall', 'durationMs (manifest)', 'cached'],
+  },
+  { key: 'model', label: 'model & effort', open: true, labels: ['model (raw)', 'resolvedModel', 'effort'] },
+  { key: 'tools', label: 'tools & output', open: false, labels: [] },
+  {
+    key: 'provenance',
+    label: 'provenance',
+    open: false,
+    labels: ['spawnDepth', 'parentAgentId', 'spawn tool_use', 'runId', 'isolation', 'worktreePath', 'spawnedWithWorktree'],
+  },
+];
+
+/** { identity:[…], lifecycle:[…], model:[…], tools:[], provenance:[…] } */
+export function groupHeaderFacts(facts = []) {
+  const out = {};
+  for (const g of FACT_GROUPS) out[g.key] = [];
+  const home = new Map();
+  for (const g of FACT_GROUPS) for (const l of g.labels) home.set(l, g.key);
+  for (const f of facts) {
+    if (!f) continue;
+    out[home.get(f.label) ?? 'provenance'].push(f);
+  }
+  return out;
+}
+
 /* ==================================================== agent-fact pick == */
 
 /** The agent-fact keys picked EXPLICITLY off the /api/agent envelope — a

@@ -20,6 +20,8 @@ import { formatBytes, formatUsd as formatUsdShared, formatUsdLocal, tzOffsetLabe
 import { vtable } from '../components/vtable.mjs';
 import { timeline, MARK_CAP } from '../components/timeline.mjs';
 import { scopeString } from '../components/scope.mjs';
+import { noteIndexState } from '../lib/footer.mjs';
+import { viewTabs } from '../lib/chrome.mjs';
 
 /* ===========================================================================
    1. Pure helpers — calendars, formatting, band assembly, badges, tables.
@@ -436,6 +438,13 @@ export const PROJECT_PALETTE = ['#7aa2f7', '#7bc47f', '#e0af68', '#f07178', '#bb
   '#f7768e', '#9ece6a', '#ff9e64', '#2ac3de', '#c0caf5', '#d19a66'];
 export const PROJECT_OVERFLOW = '#6b7686';
 
+/** The overflow swatch AS A PAINT VALUE. Every JS-side fallback goes through
+ *  the token, exactly as projectPalette's own colours do — a bare hex here
+ *  paints a colour that belongs to no theme and does not change with the mode
+ *  (KAN-105 pass 1 defined `--lens-proj-overflow` for this). The hex survives
+ *  only as the var()'s last-resort fallback. */
+export const PROJECT_OVERFLOW_PAINT = `var(--lens-proj-overflow, ${PROJECT_OVERFLOW})`;
+
 /** Top-12 stable palette + grey overflow. Stable = ranked by recorded turn
  *  count desc, slug asc as tie-break — deterministic across renders. */
 export function projectPalette(projects) {
@@ -449,7 +458,7 @@ export function projectPalette(projects) {
     const top = i < PROJECT_PALETTE.length;
     map.set(p.slug, {
       index: top ? i : null,
-      color: top ? `var(--lens-proj-${i + 1}, ${PROJECT_PALETTE[i]})` : `var(--lens-proj-overflow, ${PROJECT_OVERFLOW})`,
+      color: top ? `var(--lens-proj-${i + 1}, ${PROJECT_PALETTE[i]})` : PROJECT_OVERFLOW_PAINT,
       overflow: !top,
     });
   });
@@ -920,20 +929,13 @@ export const workflowHref = (slug, id, runId) => href('p', slug, 's', id, 'w', r
 export const sessionInvHref = (slug, id) => href('p', slug, 's', id, 'inv');
 export const memoryHref = (slug, name) => href('p', slug, 'mem', name);
 
-/** The `?v=` strip. The tab whose key === defaultView drops the param, so it
- *  agrees with the router's `t` cycling (which drops `v` for views[0]). */
-export function viewTabs(base, query, tabs, active, defaultView) {
-  const nav = h('nav', { class: 'lens-tabs', 'aria-label': 'views' });
-  for (const t of tabs) {
-    const isActive = active === t.v;
-    nav.appendChild(h('a', {
-      class: 'lens-tabs__tab' + (isActive ? ' lens-tabs__tab--on' : ''),
-      href: withQuery(base, query, { v: t.v === defaultView ? null : t.v }),
-      'aria-current': isActive ? 'page' : null, title: t.title || null,
-    }, t.label));
-  }
-  return nav;
-}
+/** The `?v=` strip — ONE component for every level (lib/chrome.mjs). It draws
+ *  the strip AND registers the view list for `t`, so the two can never drift;
+ *  the tab whose key is the default drops the param, exactly as the router's
+ *  cycling does for views[0]. Re-exported here so L1/L2 keep their import site.
+ *  (Imported as well as re-exported: `export … from` creates no local binding,
+ *  and renderStore below calls it.) */
+export { viewTabs };
 
 export function badgeRow(badges) {
   const row = h('span', { class: 'lens-badges' });
@@ -1080,12 +1082,12 @@ const POLL_SETTLED_MS = 5000;
 const MIN_BINS_PER_RUN = 100;
 
 const L0_TABS = [
-  { v: 'timeline', label: 'timeline' },
-  { v: 'table', label: 'projects' },
-  { v: 'sessions', label: 'sessions' },
-  { v: 'inventory', label: 'inventory' },
+  { key: 'timeline', label: 'timeline' },
+  { key: 'table', label: 'projects' },
+  { key: 'sessions', label: 'sessions' },
+  { key: 'inventory', label: 'inventory' },
 ];
-const L0_VIEWS = L0_TABS.map((t) => t.v);
+const L0_VIEWS = L0_TABS.map((t) => t.key);
 
 function parseSlugFilter(query) {
   const raw = query && query.get ? query.get('p') : null;
@@ -1102,7 +1104,9 @@ async function renderStore(ctx) {
   ctx.crumbs({ items: [{ label: 'the store' }] });
   ctx.registerLevels({ 0: '#/' });
   ctx.registerScope(scopeString('store'));
-  ctx.registerViews(L0_TABS.map((t) => ({ key: t.v, label: t.label })));
+  // Registered BEFORE the index fetch so `t` cycles while the page is still
+  // chrome (DESIGN §7); viewTabs() re-registers the same list when it draws.
+  ctx.registerViews(L0_TABS.map((t) => ({ key: t.key, label: t.label })));
   ctx.statbar({ pending: true, counts: [] });          // chrome first (DESIGN §7)
 
   await ensurePricing();
@@ -1125,6 +1129,7 @@ async function renderStore(ctx) {
 function paintStore(ctx, index, opts) {
   const { view, range, query } = opts;
   const st = indexStatus(index);
+  noteIndexState(st);   // the shell footer reuses this render's index facts; it never fetches
   const projects = projectsFromIndex(index);
   const palette = projectPalette(projects);
   const slugs = parseSlugFilter(query);
@@ -1216,7 +1221,7 @@ function paintStore(ctx, index, opts) {
   });
 
   const root = h('div', { class: 'lens-l0' });
-  root.appendChild(viewTabs('#/', query, L0_TABS, view, 'timeline'));
+  root.appendChild(viewTabs(ctx, L0_TABS, view));
   const body = h('div', { class: 'lens-l0__body' });
   root.appendChild(body);
   replaceEl(ctx.el, root);
@@ -1343,7 +1348,14 @@ function paintTimeline(body, { bands, palette, projects, query, range }) {
   if (day && isDateKey(day)) { paintDayExpanded(body, { bands, palette, query, day }); return; }
 
   if (!bands.length) {
-    body.appendChild(h('p', { class: 'lens-empty', text: range.active ? 'No turns are recorded in this date range.' : 'No turns are recorded in the store.' }));
+    body.appendChild(range.active
+      ? h('p', { class: 'lens-empty' },
+        'No turns are recorded in this date range. ',
+        h('a', { href: withQuery('#/', query, { from: null, to: null }) }, 'show every recorded day'))
+      : h('p', { class: 'lens-empty' },
+        'No turns are recorded in the store. ',
+        h('a', { href: withQuery('#/', query, { v: 'inventory' }) }, 'the store inventory'),
+        ' lists what is on disk.'));
     return;
   }
   const list = h('div', { class: 'lens-bands' });
@@ -1393,7 +1405,7 @@ function legend(projects, palette, query, slugs) {
       // a replacement for the turns count and the click hint.
       title: `${p.turns === null ? 'an unrecorded number of' : fmtInt(p.turns)} turns · click to filter the bars`
         + (p.labelReason ? ` · ${p.labelReason}` : ''),
-    }, h('span', { class: 'lens-legend__swatch', style: `background:${c.color || PROJECT_OVERFLOW}` }), p.label));
+    }, h('span', { class: 'lens-legend__swatch', style: `background:${c.color || PROJECT_OVERFLOW_PAINT}` }), p.label));
   }
   if (slugs.length) wrap.appendChild(h('a', { class: 'lens-legend__clear', href: withQuery('#/', query, { p: null }) }, 'clear filter'));
   return wrap;
@@ -1451,7 +1463,7 @@ function runBlock(run, { palette, query, maxTurns = null, binsCap = MARK_CAP }) 
         lane: band.localDate,
         at: projectToAxis(seg.startMs, dayStart, axisFrom),
         end: seg.endMs === null ? null : projectToAxis(seg.endMs, dayStart, axisFrom),
-        color: c.color || PROJECT_OVERFLOW,
+        color: c.color || PROJECT_OVERFLOW_PAINT,
         href: turnHref(b.slug, b.id, b.idx),
         title: `${b.slug} · turn ${b.idx} · ${fmtStamp(seg.startMs)}`
           + (seg.endMs === null ? ' (one timestamp recorded — drawn as a tick)' : ` → ${fmtClock(seg.endMs)}`)
@@ -1501,7 +1513,12 @@ function paintDayExpanded(body, { bands, palette, query, day }) {
     h('a', { class: 'lens-dayhead__back', href: withQuery('#/', query, { day: null }) }, '↑ all days'),
     h('h2', { class: 'lens-dayhead__title', text: dayLabel(day) }),
     h('span', { class: 'lens-dayhead__stats', text: band ? bandSublabel(band) : '' })));
-  if (!band) { body.appendChild(h('p', { class: 'lens-empty', text: `No turns are recorded on ${day}.` })); return; }
+  if (!band) {
+    body.appendChild(h('p', { class: 'lens-empty' },
+      `No turns are recorded on ${day}. `,
+      h('a', { href: withQuery('#/', query, { day: null }) }, 'back to all days')));
+    return;
+  }
 
   const dayStart = hostCalendar.dayStartMs(day);
   const lanes = [], marks = [];
@@ -1516,7 +1533,7 @@ function paintDayExpanded(body, { bands, palette, query, day }) {
     });
     marks.push({
       lane: id, at: seg.startMs, end: seg.endMs,
-      color: c.color || PROJECT_OVERFLOW, href: turnHref(b.slug, b.id, b.idx),
+      color: c.color || PROJECT_OVERFLOW_PAINT, href: turnHref(b.slug, b.id, b.idx),
       title: `${b.slug} · turn ${b.idx} · ${fmtStamp(seg.startMs)}${seg.endMs === null ? ' (one timestamp recorded)' : ` → ${fmtClock(seg.endMs)}`}`,
     });
   });
@@ -1544,7 +1561,7 @@ function paintProjectsTable(body, projects, palette, ctx) {
   const columns = [
     col('label', 'project', {
       render: (v, row) => h('span', { class: 'lens-projcell', title: row.labelReason || '' },
-        h('span', { class: 'lens-projcell__swatch', style: `background:${row.swatch || PROJECT_OVERFLOW}` }),
+        h('span', { class: 'lens-projcell__swatch', style: `background:${row.swatch || PROJECT_OVERFLOW_PAINT}` }),
         h('a', { class: 'lens-projcell__name', href: row._href }, row.label),
         row.memoryOnly
           ? h('span', { class: 'lens-tag', title: 'this project dir holds memory files only — there is no transcript, so there are no statistics to show' },
@@ -1703,8 +1720,12 @@ function paintInventory(body, index, ctx) {
 
   // Problems drawer — `affects` drives the "impacts totals?" column.
   const total = inv.problems.reduce((n, p) => n + p.count, 0);
-  const drawer = h('details', { class: 'lens-problems', open: inv.problems.some((p) => p.severity === 'error') || null },
-    h('summary', {}, `problems — ${fmtInt(inv.problems.length)} kind${inv.problems.length === 1 ? '' : 's'}, ${fmtInt(total)} record${total === 1 ? '' : 's'}`));
+  // The one native <details> the store inventory owns: same class, same
+  // marker and same keyboard behaviour as every other disclosure in the app.
+  const drawer = h('details', { class: 'lens-details lens-problems', open: inv.problems.some((p) => p.severity === 'error') || null },
+    h('summary', { class: 'lens-details__summary' },
+      h('span', { class: 'lens-details__label', text: `problems — ${fmtInt(inv.problems.length)} kind${inv.problems.length === 1 ? '' : 's'}` }),
+      h('span', { class: 'lens-details__count', text: `${fmtInt(total)} record${total === 1 ? '' : 's'}` })));
   // DESIGN §4 "one behaviour" — the problems drawer is a vtable like
   // every other table, not a hand-rolled one-off without sort or filter.
   const tableEl = h('div', { class: 'lens-problems__table' });

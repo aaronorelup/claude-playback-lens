@@ -67,8 +67,18 @@ export function renderMarkdown(src) {
   return out.join('\n');
 }
 
+/** Past this many recorded lines a body is folded until the reader asks. */
+export const FOLD_LINES = 40;
+
+/** The recorded line count of a body. Exact: no estimate, no rounding. */
+export function countLines(text) {
+  const s = String(text ?? '');
+  if (s === '') return 0;
+  return s.split('\n').length;
+}
+
 /** A text body with a persisted per-row "render markdown" toggle. */
-export function textBody(text, { prefKey = 'markdown', className = 'lens-body' } = {}) {
+export function textBody(text, { prefKey = 'markdown', className = 'lens-body', foldLines = FOLD_LINES } = {}) {
   const box = h('div', { class: className });
   const pre = h('pre', { class: `${className}__raw`, text: String(text ?? '') });
   const md = h('div', { class: `${className}__md lens-md` });
@@ -89,7 +99,32 @@ export function textBody(text, { prefKey = 'markdown', className = 'lens-body' }
       apply(on);
     },
   });
-  box.append(h('div', { class: `${className}__tools` }, btn), pre, md);
+  const tools = h('div', { class: `${className}__tools` }, btn);
+
+  // ---- the long-body fold. A body past FOLD_LINES recorded lines opens
+  // collapsed; the button states the EXACT recorded line count, so the reader
+  // knows what is behind it before clicking. The raw-text default and the
+  // persisted markdown toggle above are untouched by this.
+  const lines = countLines(text);
+  let fold = null;
+  if (lines > foldLines) {
+    box.setAttribute('class', `${className} ${className}--folded`);
+    fold = h('button', {
+      class: `lens-btn ${className}__fold`,
+      type: 'button',
+      'aria-expanded': 'false',
+      title: `this body records ${lines} lines; the fold shows the first ${foldLines} rendered lines`,
+      text: `show all ${lines} lines`,
+    });
+    fold.addEventListener('click', () => {
+      box.setAttribute('class', className);
+      fold.setAttribute('aria-expanded', 'true');
+      if (fold.parentNode) fold.parentNode.removeChild(fold);
+    });
+  }
+
+  box.append(tools, pre, md);
+  if (fold) box.appendChild(fold);
   apply(initial);
   return box;
 }

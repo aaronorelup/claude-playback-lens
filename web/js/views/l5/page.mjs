@@ -4,7 +4,7 @@
 // Route registration for /p/:slug/s/:sid/a/:agentId/e lives here.
 
 import { kit, apiUrl } from '../../lib/net.mjs';
-import { h, a, unknown, section, kindChip, copyButton } from '../../lib/dom.mjs';
+import { h, a, unknown, section, kindChip, copyButton, disclosure } from '../../lib/dom.mjs';
 import { fmtInt, fmtLocalTime, tzLabel, toMs, shortId } from '../../lib/fmt.mjs';
 import { routes } from '../../lib/links.mjs';
 import { parseLocator, formatLocator, copyLocator } from '../../lib/locator.mjs';
@@ -13,7 +13,7 @@ import {
   page, errorCard, pendingCard, statHeader, mountCrumbs, handle404,
   registerSiblings, siblingPager,
 } from '../../lib/chrome.mjs';
-import { rawJson, safeStringify } from '../../lib/text.mjs';
+import { rawJson, safeStringify, getPref, setPref } from '../../lib/text.mjs';
 import { blockHeading, renderBlock, renderEventLevel, peek } from './blockview.mjs';
 
 const _relCache = new Map();      // `${slug}/${sid}/${agentId}` -> {rel, payload}
@@ -222,15 +222,24 @@ export async function renderEvent(ctx) {
     body.appendChild(box);
   }
 
-  // Raw JSON below, addressed block highlighted.
+  // Raw JSON below, addressed block highlighted. It opens COLLAPSED: the
+  // rendered block above is what the reader addressed, and the raw line is the
+  // proof behind it (KAN-105 1.6). The open/closed choice persists, so a
+  // reader who works in the raw line keeps it open across events.
   const rawSec = section('raw event JSON');
-  rawSec.appendChild(h('p', { class: 'lens-note', text: `line ${fmtInt(loc.line)} of ${rel}, 1-based as an editor shows it${loc.bi ? ` · highlighting block ${loc.bi}` : ''}` }));
+  const rawNote = h('p', { class: 'lens-note', text: `line ${fmtInt(loc.line)} of ${rel}, 1-based as an editor shows it${loc.bi ? ` · highlighting block ${loc.bi}` : ''}` });
   const rawHost = h('div', { class: 'lens-l5__raw' });
-  rawSec.appendChild(rawHost);
+  const rawOpen = !!getPref('l5.raw.open', false);
+  const rawBox = disclosure('the whole line, exactly as stored', [rawNote, rawHost], {
+    open: rawOpen, className: 'lens-l5__rawbox',
+    count: `${fmtInt(blocks.length)} addressable block${blocks.length === 1 ? '' : 's'}`,
+  });
+  rawBox.addEventListener('toggle', () => setPref('l5.raw.open', rawBox.hasAttribute('open')));
+  rawSec.appendChild(rawBox);
   body.appendChild(rawSec);
   await rawJson(rawHost, event ?? rawText, loc.bi);
   if (payload.blobs?.length) {
-    rawSec.appendChild(h('p', {
+    rawBox.appendChild(h('p', {
       class: 'lens-note',
       text: `${fmtInt(payload.blobs.length)} heavy span(s) replaced by the reader before parsing: ` +
         payload.blobs.map((b) => `${b.kind} ${fmtInt(b.length)} chars`).join(', ') + ' (SPEC §1).',

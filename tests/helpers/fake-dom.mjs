@@ -126,8 +126,14 @@ export class FakeElement extends FakeNode {
   focus() {}
 }
 
-export function matchesSimple(el, sel) {
-  if (!sel) return false;
+export function matchesSimple(el, rawSel) {
+  if (!rawSel) return false;
+  // `:not(...)` is stripped and applied as a negative test. Without this the
+  // engine treated `[data-lens-layer]:not([hidden])` as "has BOTH attributes",
+  // which is the exact opposite of what closeTopLayer() asks for.
+  const nots = [];
+  const sel = String(rawSel).replace(/:not\(([^)]*)\)/g, (m, inner) => { nots.push(inner.trim()); return ''; });
+  for (const n of nots) if (n && matchesSimple(el, n)) return false;
   const cls = sel.match(/\.([A-Za-z0-9_-]+)/g) || [];
   const attrs = sel.match(/\[[^\]]+\]/g) || [];
   const tag = (sel.match(/^[a-zA-Z][a-zA-Z0-9]*/) || [null])[0];

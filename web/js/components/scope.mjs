@@ -12,6 +12,7 @@
 // is generated from recorded counts — it never characterises or summarises.
 
 import { h, clear, formatInt, formatOf } from '../format.mjs';
+import { themeControl } from '../lib/theme.mjs';
 
 /* ------------------------------------------------------------------ *
  * app shell
@@ -26,6 +27,12 @@ export function chrome(root) {
   root.setAttribute('class', 'lens-app');
 
   const reloadEl = h('div', { class: 'lens-reload', role: 'status', hidden: true });
+  // The document's ONE <h1>. The page's visible title is the crumb rail, which
+  // is a <nav> and cannot carry it, so the heading is here and visually
+  // hidden: a screen reader and an outline tool both get a real document
+  // heading, and the sighted reader still reads the rail. The router writes
+  // its text from the crumb chain on every render (router.ctx.crumbs).
+  const h1El = h('h1', { class: 'lens-h1' });
   const crumbEl = h('nav', { class: 'lens-crumbs', 'aria-label': 'Breadcrumb' });
   const scopeEl = h('div', { class: 'lens-scope' });
   const statEl = h('div', { class: 'lens-statband' });
@@ -33,15 +40,24 @@ export function chrome(root) {
   const contentEl = h('main', { class: 'lens-content', id: 'lens-content', tabindex: '-1' });
   const sheetEl = h('div', { class: 'lens-sheet', hidden: true, 'data-lens-layer': 'sheet' });
   const footEl = h('footer', { class: 'lens-foot' });
+  // The appearance control belongs to the SHELL, not to a render: it is built
+  // once, survives every navigation, and is never cleared by ctx.crumbs()
+  // (which clears crumbEl only). `#/settings` mirrors it.
+  const themeEl = themeControl();
+
+  // The rail is returned as well as mounted: the router inserts the labelled
+  // `returnTo` back control (a.lens-return) at its head on every render that
+  // carries one, and it must not live inside crumbEl, which ctx.crumbs clears.
+  const railEl = h('div', { class: 'lens-head__rail' }, crumbEl, themeEl);
 
   root.appendChild(reloadEl);
-  root.appendChild(h('header', { class: 'lens-head' }, crumbEl, scopeEl, statEl));
+  root.appendChild(h('header', { class: 'lens-head' }, h1El, railEl, scopeEl, statEl));
   root.appendChild(bannerEl);
   root.appendChild(contentEl);
   root.appendChild(footEl);
   root.appendChild(sheetEl);
 
-  return { root, reloadEl, crumbEl, scopeEl, statEl, bannerEl, contentEl, sheetEl, footEl };
+  return { root, reloadEl, h1El, railEl, crumbEl, scopeEl, statEl, bannerEl, contentEl, sheetEl, footEl, themeEl };
 }
 
 /* ------------------------------------------------------------------ *

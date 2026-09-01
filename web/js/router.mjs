@@ -38,6 +38,8 @@
 import { h, clear, replace, on, formatBytes, formatPercent, formatInt } from './format.mjs';
 import { chrome as buildChrome, crumbs as mountCrumbs, scopeSentence as mountScope } from './components/scope.mjs';
 import { statbar as mountStatbar } from './components/statbar.mjs';
+import { mountFooter, navKeyForHash } from './lib/footer.mjs';
+import { returnTarget, stripReturn } from './lib/links.mjs';
 
 /** Every view module the app knows about. Missing ones degrade, never crash. */
 export const VIEW_MODULES = [
@@ -49,14 +51,17 @@ export const VIEW_MODULES = [
 export const KEYMAP = [
   { keys: 'j / k', what: 'move between rows' },
   { keys: 'Enter', what: 'drill into the selected row' },
-  { keys: 'u', what: 'up one level (the button says where)' },
+  { keys: 'u', what: 'back to where you drilled in from, or up one level (the button says where)' },
   { keys: '[ / ]', what: 'previous / next sibling — turn at L3, agent at L4, block at L5' },
+  // Scoped, and only while that layer is open — the page keymap is never
+  // shadowed by it (KAN-105 §2.4.2).
+  { keys: '← / →', what: 'previous / next image, while the image lightbox is open' },
   { keys: '/', what: 'find in scope' },
   { keys: '\\', what: 'raw JSON for what is on screen' },
   { keys: 'g0 … g5', what: 'jump to store / project / session / turn / agent / event' },
   { keys: 't', what: 'cycle the views of this level' },
   { keys: '?', what: 'this sheet' },
-  { keys: 'Esc', what: 'close a panel, popover or sheet' },
+  { keys: 'Esc', what: 'close a panel, popover or sheet — then back to where you drilled in from' },
 ];
 
 const routes = new Map();        // pattern string -> { compiled, render, opts }
@@ -154,7 +159,33 @@ export async function loadViewModules(names = VIEW_MODULES) {
 
 export function buildShell(root) {
   shell = buildChrome(root);
+  // The footer is the shell's, not a render's: global nav on EVERY page
+  // (including L0, which otherwise links to none of find/audit/settings) plus
+  // the two facts that qualify every number. It never fetches (DESIGN §7).
+  try { footer = mountFooter(shell.footEl); } catch (err) { footer = null; console.error('[lens] footer failed', err); }
+  returnNode = null;
   return shell;
+}
+
+let footer = null;
+let returnNode = null;
+
+/**
+ * The labelled `returnTo` back control, mounted at the head of the crumb rail
+ * on EVERY route that carries one. One implementation, every landing page.
+ */
+function mountReturnControl(ret) {
+  if (returnNode && returnNode.parentNode) returnNode.parentNode.removeChild(returnNode);
+  returnNode = null;
+  if (!ret || !shell || !shell.railEl) return null;
+  returnNode = h('a', {
+    class: 'lens-return',
+    href: ret.href,
+    title: `back to ${ret.label} — the view you drilled in from (u, or Esc)`,
+  }, `← back to ${ret.label}`);
+  if (shell.railEl.insertBefore) shell.railEl.insertBefore(returnNode, shell.railEl.firstChild || null);
+  else shell.railEl.appendChild(returnNode);
+  return returnNode;
 }
 
 export function getShell() { return shell; }
@@ -189,7 +220,10 @@ function renderNoViews(ctx) {
     h('p', { class: 'lens-card__body' },
       'The foundation loaded, but no view module registered a route. '
       + 'This is what the app looks like before groups F and G land their files.'),
-    moduleFailures.length ? list : null));
+    moduleFailures.length ? list : null,
+    // Every error card carries a real exit — this one used to offer only the
+    // browser's own Back button.
+    h('p', { class: 'lens-card__body' }, h('a', { href: '#/' }, 'back to the store'))));
 }
 
 /** Abortable per-render controller so a slow view cannot paint over a newer one. */
@@ -228,6 +262,12 @@ export async function render() {
 
   const ctx = makeContext({ resolved, segments, query, path, scope });
   currentCtx = ctx;
+
+  // Band 1 additions the SHELL owns, so every route gets them identically:
+  // the labelled back control when the reader drilled in from somewhere, and
+  // the footer's aria-current.
+  mountReturnControl(ctx._bindings.returnTo);
+  if (footer) footer.setCurrent(navKeyForHash(currentHash()));
 
   // DESIGN §7 — chrome first; the CONTENT placeholder waits 150ms so a fast
   // render shows nothing at all.
@@ -288,6 +328,30 @@ function renderRouteError(ctx, err) {
  * the render context handed to every view
  * ------------------------------------------------------------------ */
 
+/**
+ * The trailing crumb naming the active view, or null.
+ *
+ * Only a `?v=` that LOOKS like a view key becomes a segment — a hand-typed or
+ * stale value of another shape is left as the unknown param DESIGN §0 says it
+ * is, rather than printed into the rail as if it were a place. The default
+ * view of every level carries no `?v` at all and therefore adds no segment.
+ */
+export function viewCrumb(query) {
+  const v = query && typeof query.get === 'function' ? query.get('v') : null;
+  if (!v || !/^[a-z][a-z0-9_-]{0,23}$/i.test(v)) return null;
+  return { label: v, view: true };
+}
+
+/** The document heading, from the crumb chain: the level and the view it is
+ *  standing in. Text only — the rail stays the visible title. */
+function writeH1(sh, props) {
+  const el = sh && sh.h1El;
+  if (!el) return;
+  const items = (props && props.items) || [];
+  const words = items.map((it) => (it && it.label ? String(it.label) : '')).filter(Boolean);
+  el.textContent = words.length ? words.slice(-2).join(' · ') : 'Claude Playback Lens';
+}
+
 function makeContext({ resolved, segments, query, path, scope }) {
   const bindings = {
     siblings: null,     // { prev, next, label }
@@ -299,6 +363,18 @@ function makeContext({ resolved, segments, query, path, scope }) {
     up: null,           // { href, label } for `u`
     levels: null,       // { 0:'#/', 1:'#/p/x', … } for g0..g5
     escape: null,
+    // { href, label } from ?returnTo — the shell's back control, `u` and Esc.
+    returnTo: returnTarget(query),
+  };
+  const back = bindings.returnTo;
+
+  /** A crumb href whose ancestor is the very page returnTo remembers should
+   *  carry that page's state instead of the bare default (brief 2.4.1). Path
+   *  equality only — never a reconstruction of state the URL does not hold. */
+  const preferReturn = (hrefStr) => {
+    if (!back || !hrefStr) return hrefStr;
+    const bare = String(hrefStr).split('?')[0];
+    return bare === String(back.href).split('?')[0] ? back.href : hrefStr;
   };
 
   const ctx = {
@@ -313,6 +389,9 @@ function makeContext({ resolved, segments, query, path, scope }) {
     setTitle: (t) => { if (!scope.stale) setTitle(t); },
 
     // routing facts
+    /** The hash this page was drilled in from, or null (see lib/links.mjs). */
+    returnTo: back ? back.href : null,
+    returnLabel: back ? back.label : null,
     route: resolved.pattern,
     hash: '#' + path + (query.toString() ? '?' + query.toString() : ''),
     path,
@@ -339,7 +418,29 @@ function makeContext({ resolved, segments, query, path, scope }) {
     // return;` in each view: a stale view that keeps running still burns CPU
     // and can still call navigate().
     bands: { crumbEl: shell.crumbEl, scopeEl: shell.scopeEl, statEl: shell.statEl, bannerEl: shell.bannerEl },
-    crumbs: (props) => (scope.stale ? null : mountCrumbs(clear(shell.crumbEl), props)),
+    crumbs: (props) => {
+      if (scope.stale) return null;
+      // D4: an ancestor crumb pointing at the page returnTo remembers gets
+      // that page's own query back, so the reader lands where they left.
+      // KAN-105 1.9.2: a named view is the LAST segment of the rail, so the
+      // header says which of a level's views you are standing in instead of
+      // leaving it to the tab strip further down the page. The default view
+      // carries no `?v`, so it adds no segment — "session 676bf186" alone is
+      // the default, "session 676bf186 / images" is a named one.
+      const next = props && props.items
+        ? {
+          ...props,
+          items: [
+            ...props.items.map((it) => (it && it.href ? { ...it, href: preferReturn(it.href) } : it)),
+            ...(viewCrumb(query) ? [viewCrumb(query)] : []),
+          ],
+          up: props.up && props.up.href ? { ...props.up, href: preferReturn(props.up.href) } : props.up,
+        }
+        : props;
+      const handle = mountCrumbs(clear(shell.crumbEl), next);
+      writeH1(shell, next);
+      return handle;
+    },
     scopeSentence: (props) => (scope.stale ? null : mountScope(clear(shell.scopeEl), props)),
     statbar: (props) => (scope.stale ? null : mountStatbar(clear(shell.statEl), props)),
 
@@ -436,13 +537,19 @@ export function onKeydown(ev) {
     case '?': ev.preventDefault(); toggleSheet(); return;
     case 'Escape':
       if (closeTopLayer()) { ev.preventDefault(); return; }
-      if (b.escape) { ev.preventDefault(); b.escape(); }
+      if (b.escape) { ev.preventDefault(); b.escape(); return; }
+      // Nothing local to close: Esc is the back control (DESIGN §5 "close a
+      // panel, popover or sheet" first — this is the last resort, and only
+      // when the reader actually drilled in from somewhere).
+      if (b.returnTo && b.returnTo.href) { ev.preventDefault(); navigate(b.returnTo.href); }
       return;
     case 'j': case 'ArrowDown': if (moveRow(b, +1)) ev.preventDefault(); return;
     case 'k': case 'ArrowUp': if (moveRow(b, -1)) ev.preventDefault(); return;
     case 'Enter': if (activateRow(b)) ev.preventDefault(); return;
     case 'u': {
-      const up = (b.up && b.up.href) || defaultUpHref(ctx);
+      // `returnTo` wins when the reader drilled in from a view: it is the
+      // recorded way back, where the crumb parent is only the tree parent.
+      const up = (b.returnTo && b.returnTo.href) || (b.up && b.up.href) || defaultUpHref(ctx);
       if (up) { ev.preventDefault(); navigate(up); }
       return;
     }

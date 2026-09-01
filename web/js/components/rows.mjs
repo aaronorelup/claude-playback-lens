@@ -13,6 +13,7 @@
 import {
   h, clear, replace, formatInt, formatLocalTime, isKnown, unknownNode, truncate,
 } from '../format.mjs';
+import { withReturn } from '../lib/links.mjs';
 
 export const PAGE_SIZE = 300;
 
@@ -84,7 +85,7 @@ export function rowsPane(el, props) {
   const root = h('div', { class: 'lens-rows' });
   const chipsEl = h('div', { class: 'lens-rows__kinds' });
   const findEl = h('div', { class: 'lens-rows__find', hidden: true });
-  const tableEl = h('div', { class: 'lens-rows__table' });
+  const tableEl = h('div', { class: 'lens-rows__table lens-tablewrap' });
   const pagerEl = h('div', { class: 'lens-rows__pager' });
   root.appendChild(chipsEl);
   root.appendChild(findEl);
@@ -245,8 +246,11 @@ export function rowsPane(el, props) {
   }
 
   function locatorLink(row) {
-    const hrefStr = state.props.locatorHref ? state.props.locatorHref(row) : row.href;
-    if (!hrefStr) return null;
+    const raw = state.props.locatorHref ? state.props.locatorHref(row) : row.href;
+    if (!raw) return null;
+    // The timetable is the list-like view L5 is drilled from: the `{}` link
+    // carries the hash (kind filter, page, view and all) back with it.
+    const hrefStr = withReturn(raw);
     return h('a', {
       class: 'lens-rows__locator', href: hrefStr, 'data-lens-drill': '',
       title: `open ${row.line}${row.bi ? '.' + row.bi : ''} — the raw event`,

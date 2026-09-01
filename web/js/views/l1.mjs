@@ -7,6 +7,8 @@
 import { defineRoute as importedDefineRoute, navigate } from '../router.mjs';
 import { api } from '../api.mjs';
 import { scopeString } from '../components/scope.mjs';
+import { withReturn } from '../lib/links.mjs';
+import { noteIndexState } from '../lib/footer.mjs';
 import { timeline } from '../components/timeline.mjs';
 import {
   h, val, dash, replaceEl, storeHref, projectHref, sessionHref, memoryHref, turnHref,
@@ -135,11 +137,11 @@ export function scopeSentenceL1({ view, label, labelReason, counts, range, st, b
    =========================================================================== */
 
 const L1_TABS = [
-  { v: 'sessions', label: 'sessions' },
-  { v: 'timeline', label: 'timeline' },
-  { v: 'memory', label: 'memory' },
+  { key: 'sessions', label: 'sessions' },
+  { key: 'timeline', label: 'timeline' },
+  { key: 'memory', label: 'memory' },
 ];
-const L1_VIEWS = L1_TABS.map((t) => t.v);
+const L1_VIEWS = L1_TABS.map((t) => t.key);
 
 async function renderProject(ctx) {
   resetViewState();
@@ -153,7 +155,9 @@ async function renderProject(ctx) {
   ctx.registerUp(storeHref(), 'the store');
   ctx.registerLevels({ 0: storeHref(), 1: projectHref(slug) });
   ctx.registerScope(scopeString('project', { slug }));
-  ctx.registerViews(L1_TABS.map((t) => ({ key: t.v, label: t.label })));
+  // Before the fetch, so `t` cycles while the page is still chrome (DESIGN §7);
+  // viewTabs() re-registers the same list when it draws.
+  ctx.registerViews(L1_TABS.map((t) => ({ key: t.key, label: t.label })));
   ctx.statbar({ pending: true, counts: [] });
 
   await ensurePricing();
@@ -186,6 +190,7 @@ async function renderProject(ctx) {
 function paintProject(ctx, o) {
   const { P, index, view, range, query, slug } = o;
   const st = indexStatus(index || { scope: P.scope });
+  noteIndexState(st);   // the shell footer reuses this render's index facts; it never fetches
   // A project payload's cards may omit the slug they are already scoped by.
   const owned = (P.sessions || []).map((c) => (c && c.slug ? c : { ...c, slug }));
   const rows = owned.length ? sessionRowsFromIndex({ sessions: owned }, { range }) : sessionRowsFromIndex(index || {}, { slug, range });
@@ -252,7 +257,7 @@ function paintProject(ctx, o) {
   });
 
   const root = h('div', { class: 'lens-l1' });
-  root.appendChild(viewTabs(projectHref(slug), query, L1_TABS, view, 'sessions'));
+  root.appendChild(viewTabs(ctx, L1_TABS, view));
   const body = h('div', { class: 'lens-l1__body' });
   root.appendChild(body);
   replaceEl(ctx.el, root);
@@ -306,7 +311,13 @@ function paintSessions(body, rows, ctx) {
 
 function paintProjectTimeline(body, { bands, query, base, hasDayBands, range }) {
   if (!bands.length) {
-    body.appendChild(h('p', { class: 'lens-empty', text: range.active ? 'No turns are recorded in this date range.' : 'No turns are recorded in this project.' }));
+    body.appendChild(range.active
+      ? h('p', { class: 'lens-empty' },
+        'No turns are recorded in this date range. ',
+        h('a', { href: withQuery(base, query, { from: null, to: null }) }, 'show every recorded day'))
+      : h('p', { class: 'lens-empty' },
+        'No turns are recorded in this project. ',
+        h('a', { href: withQuery(base, query, { v: null, from: null, to: null }) }, 'the sessions of this project')));
     return;
   }
   const list = h('div', { class: 'lens-bands lens-bands--project' });
@@ -433,7 +444,10 @@ function paintMemory(body, { P, index, slug, indexAvailable = true }) {
 
   const rows = memoryRows(P.memory, slug, sessionIndex, { indexAvailable });
   if (!rows.length) {
-    body.appendChild(h('p', { class: 'lens-empty', text: 'No memory/*.md files are recorded in this project dir.' }));
+    body.appendChild(h('p', { class: 'lens-empty' },
+      'No memory/*.md files are recorded in this project dir. ',
+      h('a', { href: projectHref(slug) }, 'the sessions of this project'),
+      ' are recorded there instead.'));
     return;
   }
   // `dangling` counts only what the loaded index PROVES absent; an
@@ -444,14 +458,16 @@ function paintMemory(body, { P, index, slug, indexAvailable = true }) {
   const el = h('div', { class: 'lens-memtable' });
   mountTable(el, {
     columns: [
-      col('name', 'file', { href: (row) => row.rawHref }),
+      // D6: the memory drill carries `?v=memory` back, so the file page can
+      // return to the listing rather than to the project default.
+      col('name', 'file', { href: (row) => withReturn(row.rawHref) }),
       col('bytes', 'bytes', { type: 'bytes', sum: true, reason: 'file size is not recorded' }),
       col('mtimeMs', 'modified', { type: 'time', reason: 'mtime is not recorded' }),
       col('origin', 'originSessionId', {
         reason: 'no originSessionId is recorded for this file on the project listing',
         render: (v, row) => row.originHref
           ? h('span', {},
-            h('a', { href: row.originHref, title: row.originSessionId }, row.originSessionId.slice(0, 8)),
+            h('a', { href: withReturn(row.originHref), title: row.originSessionId }, row.originSessionId.slice(0, 8)),
             row.crossProject ? h('span', { class: 'lens-tag', title: `that session's main transcript lives in ${row.resolved.slug}` }, 'other project') : null)
           : row.originSessionId
             ? h('span', { class: 'lens-dangling', title: row.unresolvable
@@ -460,7 +476,7 @@ function paintMemory(body, { P, index, slug, indexAvailable = true }) {
             `${row.originSessionId.slice(0, 8)} — ${row.unresolvable ? 'not resolvable right now' : 'session not on disk'}`)
             : dash(row.note),
       }),
-      col('raw', 'raw', { sortable: false, filterable: false, render: (v, row) => h('a', { href: row.rawHref }, 'raw') }),
+      col('raw', 'raw', { sortable: false, filterable: false, render: (v, row) => h('a', { href: withReturn(row.rawHref) }, 'raw') }),
     ],
     rows: rows.map((r) => ({ ...r, origin: r.originSessionId })),
     sort: [{ key: 'name', dir: 'asc' }],

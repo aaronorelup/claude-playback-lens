@@ -69,6 +69,15 @@ export function kindChip(kind) {
   return h('span', { class: `lens-kind lens-kind--${family}`, text: String(kind ?? 'unknown') });
 }
 
+/**
+ * Every emitted table goes in one of these: a wide census must scroll inside
+ * its own box rather than push the page sideways. Structure is deliberately
+ * one div — the <table> stays the wrapper's only child.
+ */
+export function tablewrap(table) {
+  return h('div', { class: 'lens-tablewrap' }, table);
+}
+
 /** Plain table for small recorded censuses; vtable() drives the sortable ones. */
 export function simpleTable(columns, rows) {
   const t = h('table', { class: 'lens-table' });
@@ -87,7 +96,61 @@ export function simpleTable(columns, rows) {
     tbody.appendChild(tr);
   }
   t.append(thead, tbody);
-  return t;
+  return tablewrap(t);
+}
+
+/* ==================================================== disclosures ==
+ * ONE expandable in the app, on native <details>/<summary>: free keyboard
+ * (Enter/Space on the summary), free find-in-page, free print behaviour, and
+ * one rotating marker from `.lens-details`.
+ *
+ * NOT for the timetable's expand-in-place rows (a <details> cannot live in a
+ * <tbody>) and NOT for the statbar contribution panels (those are popovers,
+ * not disclosures) — both keep their own mechanism deliberately.
+ */
+
+/**
+ * disclosure(summary, body, { open, className, count })
+ *   summary — a string or a node; a string may be paired with `count`, which
+ *             renders as a separate dim part so the reader knows the size of
+ *             what is behind the fold BEFORE opening it.
+ *   body    — one node, an array of nodes, or a function returning either.
+ */
+export function disclosure(summary, body, { open = false, className = '', count = null } = {}) {
+  const det = h('details', { class: `lens-details${className ? ` ${className}` : ''}`, open: open === true });
+  const sum = h('summary', { class: 'lens-details__summary' });
+  if (summary && typeof summary === 'object' && summary.nodeType) sum.appendChild(summary);
+  else sum.appendChild(h('span', { class: 'lens-details__label', text: String(summary ?? '') }));
+  if (count !== null && count !== undefined) {
+    sum.appendChild(h('span', { class: 'lens-details__count', text: String(count) }));
+  }
+  det.appendChild(sum);
+  const kids = typeof body === 'function' ? body() : body;
+  for (const k of (Array.isArray(kids) ? kids : [kids])) if (k) det.appendChild(k);
+  return det;
+}
+
+/**
+ * The expand-all / collapse-all control for a host holding 3+ sibling
+ * disclosures. Real <button>s, so it is keyboard-operable by construction;
+ * `open` is toggled as an ATTRIBUTE, which is what a native <details> reads.
+ * Renders nothing below the threshold — a control for two boxes is noise.
+ */
+export function disclosureTools(host, { min = 3, label = 'sections' } = {}) {
+  const all = () => (host && host.querySelectorAll ? [...host.querySelectorAll('details.lens-details')] : []);
+  if (all().length < min) return null;
+  const set = (openIt) => { for (const d of all()) { if (openIt) d.setAttribute('open', ''); else d.removeAttribute('open'); } };
+  return h('div', { class: 'lens-disclosures' },
+    h('button', {
+      class: 'lens-btn lens-btn--expand', type: 'button',
+      title: `open every one of these ${label}`, text: 'expand all',
+      onclick: () => set(true),
+    }),
+    h('button', {
+      class: 'lens-btn lens-btn--expand', type: 'button',
+      title: `close every one of these ${label}`, text: 'collapse all',
+      onclick: () => set(false),
+    }));
 }
 
 /** Copy-to-clipboard that states exactly what it copied. */

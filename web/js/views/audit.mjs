@@ -7,7 +7,7 @@
  */
 
 import { kit } from '../lib/net.mjs';
-import { h, a, clear, unknown, section, factList } from '../lib/dom.mjs';
+import { h, a, clear, unknown, section, factList, tablewrap } from '../lib/dom.mjs';
 import { fmtInt, fmtDur, shortId, truncate } from '../lib/fmt.mjs';
 import { routes } from '../lib/links.mjs';
 import { copyLocator } from '../lib/locator.mjs';
@@ -141,7 +141,7 @@ export async function renderAudit(ctx) {
           h('td', { class: 'lens-table__num' }, act === null ? unknown('no actual value reported') : h('span', { text: act }))));
       }
       t.appendChild(tb);
-      invSec.appendChild(t);
+      invSec.appendChild(tablewrap(t));
     }
 
     clear(sessSec);
@@ -173,7 +173,7 @@ export async function renderAudit(ctx) {
         tb.appendChild(expandRow);
       }
       t.appendChild(tb);
-      sessSec.appendChild(t);
+      sessSec.appendChild(tablewrap(t));
       sessSec.appendChild(h('p', { class: 'lens-note', text: 'Expected = Path A (the displayed hierarchy). Actual = Path B (the independent rescan). Evidence expands the billed rows behind a session, each with a 1-based file:line link into the event view.' }));
     }
 
@@ -263,7 +263,7 @@ async function loadEvidence(cell, who, K, ctx) {
         h('td', { text: flags })));
     }
     t.appendChild(tb);
-    cell.appendChild(t);
+    cell.appendChild(tablewrap(t));
   } catch (err) {
     // R14 / STALE-RENDER RULE: FIRST statement of the catch. The AbortError
     // from the signal above lands here too, and a superseded render must not
@@ -292,7 +292,7 @@ function paintCensus(sec, done) {
       h('td', { class: 'lens-table__num' }, valueText(p.b) === null ? unknown('not reported by Path B') : h('span', { text: valueText(p.b) }))));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   sec.appendChild(h('p', { class: 'lens-note', text: 'Path B walks the directory tree itself and never reuses the FileTable — a difference here is a real disagreement about what exists on disk, not a rounding question.' }));
 }
 
@@ -328,7 +328,7 @@ function paintProblems(sec, problems) {
       h('td', { text: p.message ?? '' })));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
 }
 
 function scopeFromParams(P) {

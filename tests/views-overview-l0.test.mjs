@@ -15,15 +15,18 @@ import { readFile } from 'node:fs/promises';
 const VIEW_DIR = new URL('../web/js/views/', import.meta.url);
 const JS_DIR = new URL('../web/js/', import.meta.url);
 // router.mjs / api.mjs are the DOM-facing shell — stripped as before. The
-// LEAF modules (format.mjs, components/*.mjs) are node-loadable and are the
-// helper-unification sources (one h/bytes/money/tzLabel/occupancy), so their
-// imports are rewritten to real file: URLs instead of stripped.
+// LEAF modules (format.mjs, components/*.mjs, lib/*.mjs) are node-loadable and
+// are the helper-unification sources (one h/bytes/money/tzLabel/occupancy, one
+// withReturn), so their imports are rewritten to real file: URLs instead of
+// stripped. lib/links.mjs does import router.mjs for currentHash(); that is a
+// call-time use inside a hoisted function, so the cycle resolves and nothing
+// in router.mjs's module scope touches a document.
 const STRIP_IMPORT = /^import\s+[^;]*\s+from\s+'\.\.\/(?:router|api)\.mjs';[ \t]*$/gm;
 
 async function strippedSource(name) {
   let src = await readFile(new URL(`${name}.mjs`, VIEW_DIR), 'utf8');
   src = src.replace(STRIP_IMPORT, '');
-  src = src.replace(/from\s+'\.\.\/((?:format|components\/[^']+)\.mjs)'/g,
+  src = src.replace(/from\s+'\.\.\/((?:format|components\/[^']+|lib\/[^']+)\.mjs)'/g,
     (m, rel) => `from '${new URL(rel, JS_DIR).href}'`);
   return src;
 }

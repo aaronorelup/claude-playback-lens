@@ -19,6 +19,9 @@ import {
   tokenCategories, isKnown, UNKNOWN, unknownNode,
 } from '../format.mjs';
 import { api, pricingOrNull } from '../api.mjs';
+// Every emitted table goes in the shared overflow box: an 8-column records
+// page must scroll inside the cost panel, never push the page sideways.
+import { tablewrap } from '../lib/dom.mjs';
 import { buildChips } from './chips.mjs';
 
 export const PAGE_SIZE = 300;
@@ -149,7 +152,7 @@ export function costfigure(el, props) {
       h('tfoot', null, h('tr', null,
         h('th', null, 'total'), h('th', { class: 'lens-num-col' }, ''), h('th', null, ''),
         h('th', { class: 'lens-num-col' }, isKnown(usd.total) ? formatUsd(usd.total) : UNKNOWN))));
-    panel.appendChild(comp);
+    panel.appendChild(tablewrap(comp));
 
     // --- per-raw-model groups with tokens × rate ------------------------
     panel.appendChild(h('h4', { class: 'lens-cost__subtitle' }, 'By recorded model'));
@@ -160,9 +163,9 @@ export function costfigure(el, props) {
     } else if (!pricing) {
       panel.appendChild(h('p', { class: 'lens-cost__note lens-cost__note--warn' },
         'The rate table could not be loaded from the server, so only recorded token totals are shown here — no rates, no derived figures.'));
-      panel.appendChild(modelTable(byModel, null, null));
+      panel.appendChild(tablewrap(modelTable(byModel, null, null)));
     } else {
-      panel.appendChild(modelTable(byModel, pricing, p.at));
+      panel.appendChild(tablewrap(modelTable(byModel, pricing, p.at)));
     }
 
     // --- disclosures that apply, cited by number ------------------------
@@ -324,7 +327,7 @@ export function costfigure(el, props) {
       h('p', { class: 'lens-cost__note' },
         `showing ${formatInt(rows.length)} of ${formatInt(total)} billed rows`,
         total > HARD_CAP ? ` · the server caps a page at ${formatInt(HARD_CAP)}` : ''),
-      table,
+      tablewrap(table),
       ex.total ? h('p', { class: 'lens-cost__note' },
         `${formatInt(ex.total)} rows excluded from the reprice, matching the header's own exclusions: `
         + [ex.inherited ? `${formatInt(ex.inherited)} billed in another session (R2)` : null,

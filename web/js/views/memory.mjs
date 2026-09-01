@@ -10,7 +10,7 @@
 import { kit, apiUrl, fetchRaw } from '../lib/net.mjs';
 import { h, a, section, factList } from '../lib/dom.mjs';
 import { shortId } from '../lib/fmt.mjs';
-import { routes } from '../lib/links.mjs';
+import { routes, withReturn } from '../lib/links.mjs';
 import { page, errorCard, statHeader, mountCrumbs } from '../lib/chrome.mjs';
 import { textBody } from '../lib/text.mjs';
 
@@ -173,7 +173,7 @@ export async function renderMemory(ctx) {
 
   body.appendChild(h('div', { class: 'lens-mem__tools' },
     a(apiUrl('/api/file', { slug, rel }), 'raw bytes', { target: '_blank', rel: 'noreferrer' }),
-    a(routes.projectFile(slug, rel), 'raw view')));
+    a(withReturn(routes.projectFile(slug, rel)), 'raw view')));
 
   // ---- frontmatter
   const fmSec = section('frontmatter');
@@ -197,18 +197,18 @@ export async function renderMemory(ctx) {
       break;
     case 'resolved':
       origSec.appendChild(factList([{ label: 'originSessionId', value: origin.id, source: 'frontmatter metadata.originSessionId' }]));
-      origSec.appendChild(a(routes.session(origin.slug ?? slug, origin.id), `open session ${shortId(origin.id)}`));
+      origSec.appendChild(a(withReturn(routes.session(origin.slug ?? slug, origin.id)), `open session ${shortId(origin.id)}`));
       break;
     case 'cross-project':
       origSec.appendChild(factList([{ label: 'originSessionId', value: origin.id, source: 'frontmatter metadata.originSessionId' }]));
       origSec.appendChild(h('p', { class: 'lens-note', text: `that session lives in a different project directory (${origin.slug}) — a cross-link, not an error.` }));
-      origSec.appendChild(a(routes.session(origin.slug, origin.id), `open session ${shortId(origin.id)} in ${origin.slug}`));
+      origSec.appendChild(a(withReturn(routes.session(origin.slug, origin.id)), `open session ${shortId(origin.id)} in ${origin.slug}`));
       break;
     case 'dangling':
     default:
       origSec.appendChild(factList([{ label: 'originSessionId', value: origin.id, source: 'frontmatter metadata.originSessionId' }]));
       origSec.appendChild(h('p', { class: 'lens-note lens-note--problem', text: origin.message }));
-      origSec.appendChild(a(routes.find({ q: origin.id }), 'search the corpus for this id'));
+      origSec.appendChild(a(withReturn(routes.find({ q: origin.id })), 'search the corpus for this id'));
       break;
   }
   body.appendChild(origSec);

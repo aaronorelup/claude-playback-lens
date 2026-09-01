@@ -10,7 +10,7 @@
 import { kit } from '../lib/net.mjs';
 import { h, a, clear, unknown, section } from '../lib/dom.mjs';
 import { fmtInt, fmtBytes, fmtDur, fmtLocalTime, shortId, truncate, toMs } from '../lib/fmt.mjs';
-import { routes } from '../lib/links.mjs';
+import { routes, withReturn } from '../lib/links.mjs';
 import { copyLocator } from '../lib/locator.mjs';
 import { page, errorCard, mountCrumbs, progressBar } from '../lib/chrome.mjs';
 import { classifyRel } from './inv.mjs';
@@ -177,7 +177,9 @@ export async function renderFind(ctx) {
       const count = h('span', { class: 'lens-find__groupcount', text: '0' });
       const box = h('section', { class: 'lens-find__group' },
         h('h3', { class: 'lens-find__grouphead' },
-          a(routes.session(m.slug, m.id), `${m.slug} · session ${shortId(m.id)}`), count),
+          // D3: every drill out of the result list carries the scan's own hash,
+          // so the landing page can offer "back to find results for …".
+          a(withReturn(routes.session(m.slug, m.id)), `${m.slug} · session ${shortId(m.id)}`), count),
         listing);
       results.appendChild(box);
       g = { listing, count, n: 0 };
@@ -187,7 +189,7 @@ export async function renderFind(ctx) {
     g.count.textContent = `${fmtInt(g.n)} match${g.n === 1 ? '' : 'es'}`;
     const at = toMs(m.at);
     g.listing.appendChild(h('div', { class: 'lens-find__row' },
-      a(matchHref(m), copyLocator(m.file ?? '', m.line, m.bi ?? null), { class: 'lens-link lens-find__loc' }),
+      a(withReturn(matchHref(m)), copyLocator(m.file ?? '', m.line, m.bi ?? null), { class: 'lens-link lens-find__loc' }),
       at === null ? unknown('this event type records no timestamp') : h('span', { class: 'lens-find__at', text: fmtLocalTime(at) }),
       h('code', { class: 'lens-find__ctx', text: contextWindow(m.ctx) }),
       m.bi === null || m.bi === undefined

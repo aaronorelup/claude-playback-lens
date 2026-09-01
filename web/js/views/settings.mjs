@@ -11,10 +11,11 @@
  */
 
 import { kit, sendJson } from '../lib/net.mjs';
-import { h, a, clear, unknown, section, factList } from '../lib/dom.mjs';
+import { h, a, clear, unknown, section, factList, tablewrap } from '../lib/dom.mjs';
 import { fmtInt, fmtBytes, fmtDur, fmtLocalTime, toMs } from '../lib/fmt.mjs';
 import { routes } from '../lib/links.mjs';
 import { page, errorCard, mountCrumbs } from '../lib/chrome.mjs';
+import { themeControl, readTheme, effectiveTheme } from '../lib/theme.mjs';
 
 /* ============================================================ pure ==== */
 
@@ -129,6 +130,7 @@ export const KEYMAP = [
   ['Enter', 'drill into the selected row'],
   ['u', 'up one level (the control names its destination)'],
   ['[ / ]', 'previous / next sibling — turn at L3, agent at L4, block at L5'],
+  ['← / →', 'previous / next image, while the image lightbox is open'],
   ['/', 'find in scope (its label states the 220-char head limit; its primary action scans all bytes)'],
   ['\\', 'raw JSON'],
   ['g0 – g5', 'jump to a level'],
@@ -160,7 +162,46 @@ export async function renderSettings(ctx) {
   const cacheSec = await cacheSection(K, ctx);
   if (ctx.stale) return;
   body.appendChild(cacheSec);
+  // Appended after the fetched sections on purpose: the projects-directory
+  // fact list is this page's FIRST <dl> and tests/web-stale-render.test.mjs
+  // addresses it by that position.
+  body.appendChild(appearanceSection());
   body.appendChild(keyboardSection());
+}
+
+/* ------------------------------------------------------- appearance */
+
+/**
+ * The same three-state control that sits in the header, mirrored here with the
+ * two facts behind it: what was recorded, and what is actually on screen.
+ *
+ * "system" is not a mode — it is the absence of a choice, so the effective mode
+ * is read from the browser and the row says so. When the browser does not
+ * report a preference the value is `—` with its reason, like every other
+ * unknown in this app: it is not inferred to be light.
+ */
+function appearanceSection() {
+  const sec = section('appearance');
+  const eff = effectiveTheme();
+  sec.appendChild(h('div', { class: 'lens-settings__row' }, themeControl({ label: null })));
+  sec.appendChild(factList([
+    {
+      label: 'recorded choice',
+      value: readTheme(),
+      source: 'localStorage lens.theme, this browser only',
+    },
+    {
+      label: 'showing',
+      value: eff.mode,
+      source: eff.from ?? undefined,
+      reason: 'this browser reports no colour-scheme preference, so the mode on screen is whatever its default is',
+    },
+  ]));
+  sec.appendChild(h('p', {
+    class: 'lens-note',
+    text: 'Day and night are the two halves of one palette, not an inversion: night keeps the warm gold headings and terracotta links rather than going grey. The choice is stored in this browser under lens.theme and is applied before the first paint, so reloading never flashes the other mode. Nothing about the recorded data changes with the mode — only how it is drawn.',
+  }));
+  return sec;
 }
 
 /* ------------------------------------------------------- projects dir */
@@ -370,7 +411,7 @@ async function pricingSection(K, ctx) {
       h('td', { class: 'lens-table__num', text: fmtRate(r.cacheRead) })));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   sec.appendChild(h('p', {
     class: 'lens-note',
     text: 'Every effective rate above (×1, ×1.25, ×2, ×0.1) is asserted integral in rate units at module load — a future rate that breaks it fails loudly at import rather than silently at runtime. A web-search request bills exactly $0.01; web_fetch is free (R8). A model with no covering interval is never billed $0: its tokens go to the unpriced channel (R7).',
@@ -440,7 +481,7 @@ function keyboardSection() {
     tb.appendChild(h('tr', {}, h('td', {}, h('kbd', { text: key })), h('td', { text: does })));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   return sec;
 }
 

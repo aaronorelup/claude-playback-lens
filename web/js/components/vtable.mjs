@@ -189,7 +189,9 @@ export function vtable(el, props) {
 
   const root = h('div', { class: 'lens-vtable' });
   const toolbar = h('div', { class: 'lens-vtable__toolbar' });
-  const scroller = h('div', { class: 'lens-vtable__scroll' });
+  // lens-tablewrap is the app-wide "this table scrolls inside its own box"
+  // contract; lens-vtable__scroll stays for everything already keyed to it.
+  const scroller = h('div', { class: 'lens-vtable__scroll lens-tablewrap' });
   const footer = h('div', { class: 'lens-vtable__foot' });
   root.appendChild(toolbar);
   root.appendChild(scroller);

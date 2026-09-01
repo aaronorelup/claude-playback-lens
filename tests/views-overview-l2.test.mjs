@@ -15,7 +15,7 @@ const STRIP_IMPORT = /^import\s+[^;]*?\s+from\s+'\.\.\/(?:router|api)\.mjs';[ \t
 async function strippedSource(name) {
   let src = await readFile(new URL(`${name}.mjs`, VIEW_DIR), 'utf8');
   src = src.replace(STRIP_IMPORT, '');
-  src = src.replace(/from\s+'\.\.\/((?:format|components\/[^']+)\.mjs)'/g,
+  src = src.replace(/from\s+'\.\.\/((?:format|components\/[^']+|lib\/[^']+)\.mjs)'/g,
     (m, rel) => `from '${new URL(rel, JS_DIR).href}'`);
   // cross-view imports of node-loadable group-G modules resolve to the real
   // files. l3 joined the list with R4-UI-2: agentRows reads the ONE phase

@@ -13,13 +13,16 @@
  */
 
 import { kit, apiUrl } from '../lib/net.mjs';
-import { h, s, a, clear, unknown, section, factList } from '../lib/dom.mjs';
+import { h, s, a, clear, unknown, section, factList, tablewrap, disclosure, disclosureTools } from '../lib/dom.mjs';
 import { fmtInt, fmtBytes, fmtDur, fmtLocalTime, tzLabel, toMs, shortId, truncate, spanProps } from '../lib/fmt.mjs';
-import { routes } from '../lib/links.mjs';
+import { routes, withReturn } from '../lib/links.mjs';
 import { copyLocator } from '../lib/locator.mjs';
+// ONE lightbox for both galleries (KAN-105 §2.4.2) — the session contact
+// sheet at L2 mounts the same component over the same deduped list.
+import { lightbox, dedupeTwins, imageCoverageNodes, twinFact } from '../components/lightbox.mjs';
 import {
   page, errorCard, pendingCard, statHeader, mountCrumbs, handle404,
-  registerSiblings, siblingPager,
+  registerSiblings, siblingPager, viewTabs,
 } from '../lib/chrome.mjs';
 import { safeStringify } from '../lib/text.mjs';
 import { filtersFromQuery } from '../components/scope.mjs';
@@ -28,13 +31,15 @@ import { normalizeAgent, agentGlyph, agentTags } from './l3/state.mjs';
 import {
   toolHistogram, attributionCensus, census, censusText, pairToolSpans,
   harvestPaths, headerFacts, pickAgentFacts, journalResultFact,
+  groupHeaderFacts, FACT_GROUPS,
   RAW_WINDOW, RAW_LINE_H, windowFor,
 } from './l4/analysis.mjs';
 
 export {
   toolUseIdOf, toolResultIdOf, toolNameOf, pairToolSpans, toolHistogram,
   attributionCensus, census, censusText, harvestPaths, headerFacts,
-  pickAgentFacts, journalResultFact, RAW_WINDOW, RAW_LINE_H, windowFor,
+  pickAgentFacts, journalResultFact, groupHeaderFacts, FACT_GROUPS,
+  RAW_WINDOW, RAW_LINE_H, windowFor,
 } from './l4/analysis.mjs';
 
 /* ============================================================== view == */
@@ -161,11 +166,11 @@ export async function renderAgent(ctx) {
     if (i !== -1 && i < sibIds.length - 1 && !nextHref) nextHref = routes.agent(slug, sid, sibIds[i + 1], viewQuery(view));
   }
   registerSiblings(ctx, { prev: prevHref, next: nextHref, label: 'agent' });
-  // DESIGN §5: `t` cycles this level's views, `\` opens the raw JSON.
-  ctx.registerViews?.(L4_VIEWS);
+  // DESIGN §5: `\` opens the raw JSON. `t` cycles this level's views — the
+  // shared viewTabs() registers the list as it draws the strip.
   if (rel) ctx.registerRaw?.(routes.agent(slug, sid, agentId, { v: 'raw' }));
   body.appendChild(h('div', { class: 'lens-l4__bar' },
-    viewTabs(slug, sid, agentId, view),
+    viewTabs(ctx, L4_VIEWS, view),
     siblingPager(prevHref, nextHref, {
       prevLabel: 'prev agent', nextLabel: 'next agent',
       endReason: sibs ? 'no further agent in this session\'s recorded order' : 'the sibling list is not available from this payload',
@@ -237,44 +242,43 @@ export const L4_VIEWS = [
 
 function viewQuery(view) { return view ? { v: view } : {}; }
 
-function viewTabs(slug, sid, agentId, view) {
-  const tabs = [[null, 'timetable'], ['images', 'images'], ['files', 'files'], ['raw', 'raw']];
-  return h('nav', { class: 'lens-tabs' }, tabs.map(([v, label]) =>
-    v === (view ?? null)
-      ? h('span', { class: 'lens-tabs__tab lens-tabs__tab--current', text: label })
-      : a(routes.agent(slug, sid, agentId, v ? { v } : {}), label, { class: 'lens-link lens-tabs__tab' })));
-}
-
+/**
+ * The ~20 recorded facts, grouped (DESIGN §3 L4 / KAN-105 1.5) into
+ * identity / lifecycle / model & effort / tools & output / provenance. Each
+ * group is a native <details>, open for identity, lifecycle and model &
+ * effort, collapsed for tools and provenance.
+ *
+ * GROUPING ONLY. Every fact is still the same recorded value with the same
+ * named source and the same unknown reason — nothing is summarised, reordered
+ * inside its group, or dropped, and a fact whose label the group table does
+ * not name lands in `provenance` rather than vanishing.
+ */
 function headerSection(ag, payload, { slug, sid }) {
   const sec = section('recorded facts');
   const worktreeOnDisk = payload.worktreeOnDisk ?? payload.worktreeExists ?? null;
   const facts = headerFacts({ ...ag, promptTag: payload.promptTag ?? payload.agentTag ?? null, resolvedModel: payload.resolvedModel ?? ag.raw?.resolvedModel ?? null, effortCensus: payload.effortCensus ?? censusTextOf(payload.rows, (r) => r.extra?.effort) }, { worktreeOnDisk });
+  const grouped = groupHeaderFacts(facts);
 
-  const dl = factList(facts);
-  sec.appendChild(dl);
-
-  // Links that need routing, appended as their own rows.
+  // Links that need routing — provenance rows, beside the facts they resolve.
   const extras = [];
   if (ag.parentAgentId) extras.push(h('div', { class: 'lens-facts__link' }, h('span', { text: 'parent → ' }), a(routes.agent(slug, sid, ag.parentAgentId), ag.parentAgentId)));
   if (ag.toolUseId && ag.spawnLine) extras.push(h('div', { class: 'lens-facts__link' }, h('span', { text: 'spawn tool_use → ' }), a(routes.event(slug, sid, 'main', ag.spawnLine, null), `main line ${fmtInt(ag.spawnLine)}`)));
   else if (ag.toolUseId) extras.push(h('div', { class: 'lens-facts__link' }, h('span', { text: 'spawn tool_use → ' }), a(routes.find({ q: ag.toolUseId, scope: `session:${slug}/${sid}` }), `find ${ag.toolUseId} in this session`)));
   if (ag.runId) extras.push(h('div', { class: 'lens-facts__link' }, h('span', { text: 'workflow run → ' }), a(routes.workflow(slug, sid, ag.runId), ag.runId)));
-  if (extras.length) sec.append(...extras);
 
-  // Glyph provenance.
+  // Glyph provenance — a lifecycle fact, printed with the state it explains.
   const gl = agentGlyph({ ...ag, journal: payload.journal ?? ag.journal });
-  sec.appendChild(h('p', { class: 'lens-note', text: `state glyph ${gl.glyph} — ${gl.label}${gl.source ? ` · source: ${gl.source}` : ' · nothing recorded a state for this agent'}` }));
-  for (const tag of agentTags(ag)) sec.appendChild(h('span', { class: `lens-chip lens-chip--${tag.key}`, title: tag.title, text: tag.text }));
+  const glyphNote = h('p', { class: 'lens-note', text: `state glyph ${gl.glyph} — ${gl.label}${gl.source ? ` · source: ${gl.source}` : ' · nothing recorded a state for this agent'}` });
+  const tagNodes = agentTags(ag).map((tag) => h('span', { class: `lens-chip lens-chip--${tag.key}`, title: tag.title, text: tag.text }));
 
-  // Censuses over the loaded rows.
+  // Censuses over the loaded rows — the `tools & output` group.
   const rows = payload.rows ?? [];
   const hist = toolHistogram(rows);
   const attribs = attributionCensus(hist);
   const stops = census(rows.filter((r) => r.kind === 'text' || r.kind === 'thinking' || r.extra?.stopReason !== undefined), (r) => r.extra?.stopReason);
   const loadedNote = (payload.total ?? rows.length) > rows.length
     ? ` (over the ${fmtInt(rows.length)} rows loaded of ${fmtInt(payload.total)} — page on to widen the census)` : '';
-
-  sec.appendChild(factList([
+  grouped.tools = [
     { label: 'stop_reasons', value: censusText(stops) ?? null, source: `recorded stop_reason on assistant rows${loadedNote}`, reason: 'no stop_reason recorded on the loaded rows' },
     { label: 'tool histogram', value: hist.length ? hist.map(([n, c]) => `${n} ${fmtInt(c)}`).join(' · ') : null, source: `recorded tool_use names${loadedNote}`, reason: 'this transcript records no tool_use rows' },
     { label: 'MCP servers', value: attribs.mcp.length ? attribs.mcp.map(([n, c]) => `${n} ${fmtInt(c)}`).join(' · ') : null, source: 'tool names of the form mcp__<server>__<tool>', reason: 'no MCP tool call recorded on the loaded rows' },
@@ -282,7 +286,22 @@ function headerSection(ag, payload, { slug, sid }) {
     { label: 'structured output', value: payload.structuredOutput ? safeStringify(payload.structuredOutput) : null, source: 'recorded structured output', reason: 'not recorded for this agent' },
     journalResultFact(payload.journal ?? ag.journal, ag.stateFacts ?? null),
     { label: 'peer messages', value: peerText(rows), source: 'origin.kind peer/coordinator with origin.senderTaskId', reason: 'no peer or coordinator continuation recorded on the loaded rows' },
-  ]));
+  ];
+
+  const groups = h('div', { class: 'lens-factgroups' });
+  for (const g of FACT_GROUPS) {
+    const list = grouped[g.key] ?? [];
+    const tail = g.key === 'lifecycle' ? [glyphNote, ...tagNodes] : g.key === 'provenance' ? extras : [];
+    if (!list.length && !tail.length) continue;
+    groups.appendChild(disclosure(g.label, [list.length ? factList(list) : null, ...tail], {
+      open: g.open, className: 'lens-factgroup',
+      count: `${fmtInt(list.length)} recorded fact${list.length === 1 ? '' : 's'}`,
+    }));
+  }
+  const tools = disclosureTools(groups, { label: 'fact groups' });
+  if (tools) sec.appendChild(tools);
+  sec.appendChild(groups);
+
   sec.appendChild(h('p', {
     class: 'lens-note',
     text: 'cwd is deliberately not a header fact here: an agent\'s cwd is never a project signal (a worktree would invent a phantom project — SPEC §2). It stays visible in ?v=raw and at L5.',
@@ -397,11 +416,37 @@ function stripSection(rows, ag, { slug, sid, agentId }) {
 /* ------------------------------------------------------------ ?v=images */
 
 async function renderImagesView(body, { slug, sid, agentId, rel, rows, total }) {
-  const images = rows.filter((r) => r.kind === 'image');
-  const sec = section(`images — ${fmtInt(images.length)} recorded on the loaded rows`);
-  if (rows.length < total) {
-    sec.appendChild(h('p', { class: 'lens-note', text: `census over the ${fmtInt(rows.length)} rows loaded of ${fmtInt(total)}.` }));
-  }
+  // KAN-105 §2.4.2: the two galleries stop behaving differently. This one's
+  // images were not clickable at ALL (D2); they now open the same lightbox
+  // the session contact sheet does, over the same deduped list.
+  const records = rows.filter((r) => r.kind === 'image').map((r) => ({
+    file: rel,
+    line: r.line,
+    bi: r.bi ?? null,
+    at: toMs(r.at),
+    // The row index carries no `source` key for an image block — the images
+    // endpoint is where that fact lives. '—' with the reason, never a guess.
+    source: r.source ?? null,
+    bytes: r.extra?.bytes ?? null,
+    mediaType: r.extra?.mediaType ?? null,
+    twin: !!r.twin,
+    facts: r.extra?.base64Length
+      ? [{ label: 'base64', value: `${fmtInt(r.extra.base64Length)} chars`, note: 'the recorded length of the encoded block; the transcript ships the base64, /api/image decodes it' }]
+      : [],
+  }));
+  const census = dedupeTwins(records);
+  const images = census.tiles.map((im) => ({
+    ...im,
+    src: rel ? apiUrl('/api/image', { slug, id: sid, file: rel, line: im.line, block: im.bi ?? '' }) : null,
+    href: routes.event(slug, sid, agentId, im.line, im.bi ?? null),
+    alt: `image at line ${im.line}${im.bi ? `.${im.bi}` : ''}`,
+  }));
+  const sec = section('images');
+  sec.appendChild(h('p', { class: 'lens-coverage' },
+    ...imageCoverageNodes(census),
+    rows.length < total
+      ? ` Census over the ${fmtInt(rows.length)} rows loaded of ${fmtInt(total)}.`
+      : ' Census over every row of this transcript.'));
   if (!images.length) {
     sec.appendChild(h('p', { class: 'lens-note', text: 'this transcript records no image blocks on the loaded rows.' }));
     body.appendChild(sec);
@@ -409,22 +454,33 @@ async function renderImagesView(body, { slug, sid, agentId, rel, rows, total }) 
   }
   sec.appendChild(h('p', {
     class: 'lens-note',
-    text: 'Images are decoded on demand by /api/image, which re-reads the addressed line — the transcript itself never ships its base64 (SPEC §1, §8).',
+    text: 'Images are decoded on demand by /api/image, which re-reads the addressed line — the transcript itself never ships its base64 (SPEC §1, §8). Clicking one opens it here; the panel links out to the raw event and back.',
   }));
   // The contact sheet is lens-contact, its own scroll box — never the keyboard
   // overlay's fixed-inset lens-sheet class.
   const grid = h('div', { class: 'lens-contact lens-contact--grid' });
-  for (const r of images) {
-    const src = rel ? apiUrl('/api/image', { slug, id: sid, file: rel, line: r.line, block: r.bi ?? '' }) : null;
-    const at = toMs(r.at);
-    grid.appendChild(h('figure', { class: 'lens-contact__tile' },
-      src ? h('img', { class: 'lens-contact__img', src, loading: 'lazy', alt: `image at line ${r.line}${r.bi ? `.${r.bi}` : ''}` })
-        : unknown('no transcript path available to decode this image from'),
-      h('figcaption', { class: 'lens-contact__cap' },
-        a(routes.event(slug, sid, agentId, r.line, r.bi ?? null), copyLocator('', r.line, r.bi ?? null)),
-        at === null ? unknown('no timestamp recorded') : h('span', { text: fmtLocalTime(at, { date: false }) }),
-        h('span', { text: r.extra?.bytes ? fmtBytes(r.extra.bytes) : (r.extra?.base64Length ? `${fmtInt(r.extra.base64Length)} b64 chars` : '') }))));
-  }
+  const lb = lightbox(body, { images, fallbackFocus: grid });
+  images.forEach((im, i) => {
+    const tile = h('figure', { class: 'lens-contact__tile' });
+    const shot = im.src
+      ? h('img', { class: 'lens-contact__img', src: im.src, loading: 'lazy', alt: im.alt })
+      : unknown('no transcript path available to decode this image from');
+    tile.appendChild(im.src
+      ? h('button', {
+        class: 'lens-contact__link', type: 'button',
+        title: `open image ${i + 1} of ${images.length} here — arrows walk the gallery, Esc closes`,
+        onclick: (ev) => lb.open(i, ev.currentTarget),
+      }, shot)
+      : shot);
+    tile.appendChild(h('figcaption', { class: 'lens-contact__cap' },
+      a(withReturn(im.href), copyLocator('', im.line, im.bi ?? null)),
+      im.at === null ? unknown('no timestamp recorded') : h('span', { text: fmtLocalTime(im.at, { date: false }) }),
+      h('span', { text: im.bytes ? fmtBytes(im.bytes) : (im.facts.length ? String(im.facts[0].value) : '') }),
+      (im.twins && im.twins.length)
+        ? h('span', { class: 'lens-tag', title: twinFact(im).value }, 'twin')
+        : null));
+    grid.appendChild(tile);
+  });
   sec.appendChild(grid);
   body.appendChild(sec);
 }
@@ -466,7 +522,7 @@ function renderFilesView(body, { slug, sid, agentId, rows, total }) {
       h('td', {}, p.lines.length ? a(routes.event(slug, sid, agentId, p.lines[0], null), `line ${fmtInt(p.lines[0])}`) : unknown('no tool_use line recorded for this path'))));
   }
   t.appendChild(tb);
-  sec.appendChild(t);
+  sec.appendChild(tablewrap(t));
   body.appendChild(sec);
 }
 

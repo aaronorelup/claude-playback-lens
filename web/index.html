@@ -3,10 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <title>Claude Playback Lens</title>
+<!-- Appearance, before the stylesheet: without this the page paints light and
+     then flips when the modules load. Reads the same `lens.theme` pref that
+     web/js/lib/theme.mjs writes (setPref stores JSON, hence the quote strip).
+     Absent or unreadable = follow the system. No dependency, nothing else. -->
+<script>
+(function () {
+  try {
+    var v = localStorage.getItem('lens.theme');
+    if (!v) return;
+    v = v.replace(/^"|"$/g, '');
+    if (v === 'dark' || v === 'light') document.documentElement.setAttribute('data-theme', v);
+  } catch (e) { /* storage blocked — follow the system */ }
+})();
+</script>
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%23b4531f' stroke-width='2'/%3E%3Cline x1='12' y1='12' x2='15' y2='15' stroke='%23b4531f' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%23a85e2b' stroke-width='2'/%3E%3Cline x1='12' y1='12' x2='15' y2='15' stroke='%23a85e2b' stroke-width='2'/%3E%3C/svg%3E">
 </head>
 <body>
 

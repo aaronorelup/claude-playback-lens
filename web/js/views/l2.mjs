@@ -9,6 +9,10 @@ import { api } from '../api.mjs';
 import { scopeString } from '../components/scope.mjs';
 import { timeline, occupancy as sharedOccupancy, MARK_CAP } from '../components/timeline.mjs';
 import { classifyRel } from './inv.mjs';
+// The gallery's tiles no longer carry `withReturn` hrefs of their own: the
+// lightbox owns the one link out of an image (see components/lightbox.mjs),
+// and it applies withReturn there so both galleries return the same way.
+import { lightbox, dedupeTwins, imageCoverageNodes, twinFact } from '../components/lightbox.mjs';
 import {
   h, val, dash, replaceEl, storeHref, projectHref, sessionHref, turnHref, agentHref,
   eventHref, workflowHref, sessionInvHref, mountBands, buildStatbarProps, mountTable,
@@ -247,9 +251,32 @@ export function coverageSentence(cov) {
   const known = main !== null || agent !== null || noSidecar !== null;
   return {
     text: parts.join('; ') + '.',
+    // the same three recorded figures, for the DOM build below
+    figures: { main, agent, noSidecar },
     known,
     reason: known ? null : 'the payload records no tool-call denominators for this session',
   };
+}
+
+/**
+ * The coverage sentence AS NODES — the same values as `.text`, with every
+ * FIGURE in `.lens-num` so a denominator printed inside prose still reads as a
+ * monospace tabular number. Kept out of coverageSentence() so that helper
+ * stays pure and DOM-free (the tests drive it in plain node).
+ */
+export function coverageNodes(cov) {
+  const { main = null, agent = null, noSidecar = null } = (cov && cov.figures) || {};
+  const fig = (n, reason) => (n === null ? dash(reason) : h('span', { class: 'lens-num', text: fmtInt(n) }));
+  const nodes = [
+    'paths from ', fig(main, 'no main-thread tool-call denominator is recorded on this payload'),
+    ' main-thread and ', fig(agent, 'no agent tool-call denominator is recorded on this payload'),
+    ' agent tool calls that carry a path key',
+  ];
+  if (noSidecar !== null) {
+    nodes.push('; ', h('span', { class: 'lens-num', text: fmtInt(noSidecar) }), ' agent tool results carry no path sidecar');
+  }
+  nodes.push('.');
+  return nodes;
 }
 
 /** The SEVEN metadata types of SPEC §3 (custom-title, ai-title, mode,
@@ -490,12 +517,12 @@ export function scopeSentenceL2({ view, detail, choice, agents, turns, st, workf
    =========================================================================== */
 
 const L2_TABS = [
-  { v: 'turns', label: 'turns' },
-  { v: 'agents', label: 'agents' },
-  { v: 'timeline', label: 'timeline' },
-  { v: 'workflows', label: 'workflows' },
-  { v: 'files', label: 'files' },
-  { v: 'images', label: 'images' },
+  { key: 'turns', label: 'turns' },
+  { key: 'agents', label: 'agents' },
+  { key: 'timeline', label: 'timeline' },
+  { key: 'workflows', label: 'workflows' },
+  { key: 'files', label: 'files' },
+  { key: 'images', label: 'images' },
 ];
 
 async function renderSession(ctx) {
@@ -569,12 +596,11 @@ export function paintSession(ctx, o) {
 
   // The tab that drops `?v=` is the session's REAL default (the
   // degenerate flip's choice with no explicit ?v) — never the view the reader
-  // happens to be standing on. Registered in a FIXED order (default first,
-  // then L2_TABS order) so `t`-cycling is stable across renders.
+  // happens to be standing on. viewTabs() registers the view list in a FIXED
+  // order (default first, then L2_TABS order) so `t`-cycling is stable across
+  // renders; the strip itself keeps L2_TABS' display order.
   const defaultView = chooseSessionView(detail, null).view;
-  const tabs = [{ key: defaultView, label: (L2_TABS.find((t) => t.v === defaultView) || {}).label || defaultView },
-    ...L2_TABS.filter((t) => t.v !== defaultView).map((t) => ({ key: t.v, label: t.label }))];
-  ctx.registerViews(tabs);
+  const tabs = L2_TABS.map((t) => (t.key === defaultView ? { ...t, default: true } : t));
 
   const fork = forkBanner(agg);
   if (fork) {
@@ -619,7 +645,7 @@ export function paintSession(ctx, o) {
   });
 
   const root = h('div', { class: 'lens-l2' });
-  root.appendChild(viewTabs(sessionHref(slug, sid), query, L2_TABS, view, defaultView));
+  root.appendChild(viewTabs(ctx, tabs, view));
   if (badges.length) root.appendChild(h('div', { class: 'lens-l2__badges' }, badgeRow(badges)));
 
   // The three-row session strip and the facts row are on every L2 view.
@@ -748,7 +774,10 @@ function stripLedger() {
 function sessionStrip(detail, { slug, sid, bounds, agents }) {
   const wrap = h('section', { class: 'lens-strip' });
   if (bounds.start === null) {
-    wrap.appendChild(h('p', { class: 'lens-empty', text: 'No timestamps are recorded for this session, so no strip can be drawn.' }));
+    wrap.appendChild(h('p', { class: 'lens-empty' },
+      'No timestamps are recorded for this session, so no strip can be drawn. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' lists every recorded census for it.'));
     return wrap;
   }
   const lanes = [], marks = [];
@@ -889,7 +918,13 @@ function factsRow(detail) {
 
 function paintTurns(body, detail, { slug, sid, ctx }) {
   const turns = turnBarModel(detail);
-  if (!turns.length) { body.appendChild(h('p', { class: 'lens-empty', text: 'No turns are recorded in this session.' })); return; }
+  if (!turns.length) {
+    body.appendChild(h('p', { class: 'lens-empty' },
+      'No turns are recorded in this session. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' enumerates every event that was parsed and every bucket that is not a row.'));
+    return;
+  }
   const list = h('div', { class: 'lens-turns' });
   for (const t of turns) list.appendChild(turnCard(t, { slug, sid }));
   body.appendChild(list);
@@ -957,7 +992,10 @@ function turnCard(t, { slug, sid }) {
 function paintAgents(body, detail, { slug, sid, query, ctx }) {
   const rows = agentRows(detail);
   if (!rows.length) {
-    body.appendChild(h('p', { class: 'lens-empty', text: '0 agents — no agent transcript exists under this session’s directory tree.' }));
+    body.appendChild(h('p', { class: 'lens-empty' },
+      '0 agents — no agent transcript exists under this session’s directory tree. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' lists every file that does exist under it.'));
     return;
   }
   const columns = [
@@ -1023,7 +1061,13 @@ function paintAgents(body, detail, { slug, sid, query, ctx }) {
 /* ---- ?v=timeline --------------------------------------------------------- */
 
 function paintSessionTimeline(body, detail, { slug, sid, bounds }) {
-  if (bounds.start === null) { body.appendChild(h('p', { class: 'lens-empty', text: 'No timestamps are recorded for this session.' })); return; }
+  if (bounds.start === null) {
+    body.appendChild(h('p', { class: 'lens-empty' },
+      'No timestamps are recorded for this session. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' lists what is recorded instead.'));
+    return;
+  }
   const lanes = [], marks = [];
   for (const t of turnBarModel(detail)) {
     if (t.at === null) continue;
@@ -1072,7 +1116,13 @@ function paintSessionTimeline(body, detail, { slug, sid, bounds }) {
 
 function paintWorkflows(body, detail, { slug, sid, ctx }) {
   const wfs = detail.workflows || [];
-  if (!wfs.length) { body.appendChild(h('p', { class: 'lens-empty', text: 'No workflow run directories are recorded under this session.' })); return; }
+  if (!wfs.length) {
+    body.appendChild(h('p', { class: 'lens-empty' },
+      'No workflow run directories are recorded under this session. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' lists every recorded path under it.'));
+    return;
+  }
   // DESIGN §4 one table behaviour — the workflows listing is a vtable.
   const rows = wfs.map((w) => {
     const runId = w.runId || w.id;
@@ -1123,19 +1173,28 @@ async function paintFiles(body, detail, { slug, sid, ctx }) {
   try {
     payload = await api(`/api/session/${encodeURIComponent(slug)}/${encodeURIComponent(sid)}/files`, null, { signal: ctx && ctx.signal });
   } catch (err) {
-    holder.appendChild(h('p', { class: 'lens-empty', text: `the files ledger could not be fetched: ${err && err.message}` }));
+    holder.appendChild(h('p', { class: 'lens-empty' },
+      `the files ledger could not be fetched: ${err && err.message} — `,
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' carries the same ledger.'));
     return;
   }
   if (pendingOf(payload)) {
-    holder.appendChild(h('p', { class: 'lens-empty', text: 'the index is still building — the files ledger arrives with it' }));
+    holder.appendChild(h('p', { class: 'lens-empty' },
+      'the index is still building — the files ledger arrives with it. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' is the same ledger when it lands.'));
     return;
   }
   const rows = payload.filesLedger || [];
   const cov = coverageSentence(payload.denominators || (detail.inventory && detail.inventory.filesLedgerDenominators));
   holder.appendChild(h('p', { class: 'lens-coverage', title: 'the denominator for this view, printed on it' },
-    cov.known ? cov.text : dash(cov.reason)));
+    cov.known ? coverageNodes(cov) : dash(cov.reason)));
   if (!rows.length) {
-    holder.appendChild(h('p', { class: 'lens-empty', text: 'No file paths are recorded in this session’s tool_use inputs or main-tier sidecars.' }));
+    holder.appendChild(h('p', { class: 'lens-empty' },
+      'No file paths are recorded in this session’s tool_use inputs or main-tier sidecars. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' proves that census against the files on disk.'));
     return;
   }
   const el = h('div', { class: 'lens-filetable' });
@@ -1165,6 +1224,16 @@ async function paintFiles(body, detail, { slug, sid, ctx }) {
 const TILE = 132;      // cell box in px; the inner tile is sized by recorded bytes
 const OVERSCAN = 3;    // rows rendered beyond the viewport
 
+/** The /api/image address of one recorded image — the SESSION-RELATIVE rel the
+ *  images endpoint ships, which is exactly what the endpoint's guard accepts.
+ *  Built once per record so the tile and the lightbox request the same bytes
+ *  and the browser cache sees one URL, not two. */
+export function imageSrc(slug, sid, im) {
+  const params = new URLSearchParams({ slug, id: sid, file: im.file, line: String(im.line) });
+  if (im.bi !== null && im.bi !== undefined) params.set('block', String(im.bi));
+  return `/api/image?${params.toString()}`;
+}
+
 async function paintImages(body, detail, { slug, sid, ctx }) {
   // payload split (2026-08-17): the per-image list ships from its own
   // endpoint with SESSION-RELATIVE rels that feed /api/image directly.
@@ -1180,21 +1249,49 @@ async function paintImages(body, detail, { slug, sid, ctx }) {
     return;
   }
   if (pendingOf(payload)) {
-    body.appendChild(h('p', { class: 'lens-empty', text: 'the index is still building — the image list arrives with it' }));
+    body.appendChild(h('p', { class: 'lens-empty' },
+      'the index is still building — the image list arrives with it. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' lists every image with its file, line and block locator.'));
     return;
   }
-  const images = (payload.images || []).map((im) => ({
+  const records = (payload.images || []).map((im) => ({
     file: im.file || im.rel || im.path || null,
     line: fin(im.line),
     bi: im.bi ?? im.block ?? null,
     at: fin(im.at),
     source: im.source || im.where || null,
     bytes: fin(im.bytes, im.size),
+    mediaType: im.mediaType || im.media_type || im.mime || null,
     twin: !!im.twin,
   }));
+  // KAN-105 D1: the sentence below has always said the twin is "noted rather
+  // than drawn again"; the code drew it again (106 tiles for 54 images on the
+  // Tea-House session). The twin is now folded into the record it duplicates
+  // and surfaces as a fact on the lightbox panel — and the sentence states
+  // BOTH numbers, because a census never drops data silently.
+  const census = dedupeTwins(records);
+  const images = census.tiles.map((im) => ({
+    ...im,
+    src: im.file && im.line !== null ? imageSrc(slug, sid, im) : null,
+    href: im.file && im.line !== null
+      // Images span agent files too — the drill address derives its agentId
+      // from the recorded rel, exactly as find.mjs does; 'main' only when the
+      // rel names the main transcript.
+      ? eventHref(slug, sid, classifyRel(im.file).agentId ?? 'main', im.bi == null ? String(im.line) : `${im.line}.${im.bi}`)
+      : null,
+    alt: `image recorded at line ${im.line}${im.bi != null ? '.' + im.bi : ''}`,
+  }));
   body.appendChild(h('p', { class: 'lens-coverage' },
-    `${fmtInt(images.length)} image block${images.length === 1 ? '' : 's'} recorded. Tiles are sized by recorded byte count; pixels load only when a tile scrolls into view. Where the same bytes appear twice on one line (tool_result block + sidecar), the twin is noted rather than drawn again.`));
-  if (!images.length) { body.appendChild(h('p', { class: 'lens-empty', text: 'No image blocks are recorded in this session.' })); return; }
+    ...imageCoverageNodes(census),
+    ' Tiles are sized by recorded byte count; pixels load only when a tile scrolls into view. Clicking one opens it here — the gallery is never left.'));
+  if (!images.length) {
+    body.appendChild(h('p', { class: 'lens-empty' },
+      'No image blocks are recorded in this session. ',
+      h('a', { href: sessionInvHref(slug, sid) }, 'the session inventory'),
+      ' prints the same census beside the four JSON paths images can occupy.'));
+    return;
+  }
 
   const maxBytes = images.reduce((m, im) => Math.max(m, im.bytes || 0), 0);
   // lens-contact: the contact sheet is its own scroll box; the keyboard
@@ -1206,6 +1303,11 @@ async function paintImages(body, detail, { slug, sid, ctx }) {
   sheet.appendChild(win);
   body.appendChild(sheet);
   body.appendChild(h('p', { class: 'lens-note', text: `Largest recorded image ${fmtBytes(maxBytes)} — the fixed scale for the tile areas.` }));
+
+  // ONE layer for the whole sheet, holding ONE <img>: the tiles the reader
+  // has not scrolled to stay unrendered, and opening a tile fetches that
+  // image plus its two neighbours — never the 1,194 the grid can hold.
+  const lb = track(lightbox(body, { images, fallbackFocus: sheet }));
 
   let cols = 1, rendered = { from: -1, to: -1 };
   const io = typeof IntersectionObserver === 'function'
@@ -1228,37 +1330,37 @@ async function paintImages(body, detail, { slug, sid, ctx }) {
   }
   function draw() {
     const rows = Math.ceil(images.length / cols);
-    const top = sheet.scrollTop, viewH = sheet.clientHeight || TILE * 4;
+    // `|| 0` for the same reason `|| TILE * 4` is there: a scroll box that has
+    // not been laid out reports nothing, and NaN would draw an empty window.
+    const top = sheet.scrollTop || 0, viewH = sheet.clientHeight || TILE * 4;
     const first = Math.max(0, Math.floor(top / TILE) - OVERSCAN);
     const last = Math.min(rows - 1, Math.floor((top + viewH) / TILE) + OVERSCAN);
     if (first === rendered.from && last === rendered.to) return;
     rendered = { from: first, to: last };
     while (win.firstChild) win.removeChild(win.firstChild);
     win.setAttribute('style', `transform:translateY(${first * TILE}px);grid-template-columns:repeat(${cols}, ${TILE}px)`);
-    for (let i = first * cols; i < Math.min(images.length, (last + 1) * cols); i++) win.appendChild(tileFor(images[i]));
+    for (let i = first * cols; i < Math.min(images.length, (last + 1) * cols); i++) win.appendChild(tileFor(images[i], i));
   }
-  function tileFor(im) {
+  function tileFor(im, i) {
     const frac = maxBytes > 0 && im.bytes ? Math.sqrt(im.bytes / maxBytes) : 0;
     const side = Math.max(18, Math.round(frac * (TILE - 36)) || 18);
     const cell = h('figure', { class: 'lens-contact__tile', style: `width:${TILE}px;height:${TILE}px` });
     const box = h('div', { class: 'lens-contact__box', style: `width:${side}px;height:${side}px` });
-    if (im.file && im.line !== null) {
-      const params = new URLSearchParams({ slug, id: sid, file: im.file, line: String(im.line) });
-      if (im.bi !== null && im.bi !== undefined) params.set('block', String(im.bi));
+    if (im.src) {
       const img = h('img', {
-        class: 'lens-contact__img', loading: 'lazy', decoding: 'async',
-        alt: `image recorded at line ${im.line}${im.bi != null ? '.' + im.bi : ''}`,
+        class: 'lens-contact__img', loading: 'lazy', decoding: 'async', alt: im.alt,
       });
-      img.setAttribute('data-src', `/api/image?${params.toString()}`);
+      img.setAttribute('data-src', im.src);
       if (io) io.observe(img); else img.src = img.getAttribute('data-src');
       box.appendChild(img);
-      // Images span agent files too — the drill address derives its
-      // agentId from the recorded rel, exactly as find.mjs does; 'main' only
-      // when the rel names the main transcript.
-      const agentId = classifyRel(im.file).agentId ?? 'main';
-      cell.appendChild(h('a', {
-        class: 'lens-contact__link',
-        href: eventHref(slug, sid, agentId, im.bi == null ? String(im.line) : `${im.line}.${im.bi}`),
+      // D1: a BUTTON, not a link. Clicking a tile used to leave the gallery
+      // for L5 with no way back and no way onward; it now opens the image in
+      // place. The route out of the layer is the panel's "open the raw
+      // event" link, which carries returnTo back to this exact view.
+      cell.appendChild(h('button', {
+        class: 'lens-contact__link', type: 'button',
+        title: `open image ${i + 1} of ${images.length} here — arrows walk the gallery, Esc closes`,
+        onclick: (ev) => lb.open(i, ev.currentTarget),
       }, box));
     } else {
       box.appendChild(dash('no file/line locator is recorded for this image'));
@@ -1271,7 +1373,9 @@ async function paintImages(body, detail, { slug, sid, ctx }) {
       // Pairing is presence/positional per line (parse.mjs); the SHA
       // check was a one-time corpus-wide spec-time verification, never re-run
       // per tile — the wording must not claim otherwise.
-      im.twin ? h('span', { class: 'lens-tag', title: 'recorded twice on this line (tool_result block + toolUseResult sidecar) — rendered once; byte-identity was verified corpus-wide at spec time, not re-checked per line' }, 'twin') : null));
+      (im.twins && im.twins.length)
+        ? h('span', { class: 'lens-tag', title: `${twinFact(im).value} — drawn once here; byte-identity was verified corpus-wide at spec time, not re-checked per line` }, 'twin')
+        : null));
     return cell;
   }
 
