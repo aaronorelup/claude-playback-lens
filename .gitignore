@@ -21,3 +21,13 @@ tests/fixtures/api/store/
 
 # maintainer-local research digest: distilled from the private corpus, never published
 docs/research/_digest.md
+
+# Maintainer-local planning docs (specs, briefs, hosting notes) — deliberately
+# never published; before this entry they survived only by never being staged.
+claude/
+
+# Analytics outputs produced by driving the MCP server over the private corpus.
+# They carry real per-project cost figures and must never land in this public
+# repo. The trailing glob catches parallel-run variants.
+project-analytics.md
+usage-by-billing-period*.md
