@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lens": {
+      "command": "npx",
+      "args": ["-y", "claude-playback-lens-mcp"]
+    }
+  }
+}

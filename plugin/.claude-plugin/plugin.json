@@ -1,0 +1,21 @@
+{
+  "name": "playback-lens",
+  "description": "Ask Claude about your own Claude Code usage. Bundles the Playback Lens MCP server (five read-only tools over ~/.claude/projects) plus a skill that teaches the model when to reach for it and how to read its results without inventing numbers.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Aaron Orelup"
+  },
+  "homepage": "https://github.com/aaronorelup/claude-playback-lens",
+  "repository": "https://github.com/aaronorelup/claude-playback-lens",
+  "license": "MIT",
+  "keywords": [
+    "usage",
+    "cost",
+    "tokens",
+    "transcripts",
+    "sessions",
+    "analytics",
+    "mcp",
+    "claude-code"
+  ]
+}

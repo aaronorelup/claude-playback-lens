@@ -1,0 +1,35 @@
+{
+  "name": "claude-playback-lens",
+  "description": "The Claude Playback Lens marketplace — plugins that let an agent read your own Claude Code transcript store: what a session cost, which model you are spending on, and what a past session actually did.",
+  "metadata": {
+    "description": "The Claude Playback Lens marketplace — plugins that let an agent read your own Claude Code transcript store: what a session cost, which model you are spending on, and what a past session actually did."
+  },
+  "owner": {
+    "name": "Aaron Orelup",
+    "url": "https://github.com/aaronorelup"
+  },
+  "plugins": [
+    {
+      "name": "playback-lens",
+      "source": "./plugin",
+      "description": "Ask Claude about your own Claude Code usage. Bundles the Playback Lens MCP server (five read-only tools over ~/.claude/projects) plus a skill that teaches the model when to reach for it and how to read its results without inventing numbers.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Aaron Orelup"
+      },
+      "homepage": "https://github.com/aaronorelup/claude-playback-lens",
+      "license": "MIT",
+      "keywords": [
+        "usage",
+        "cost",
+        "tokens",
+        "transcripts",
+        "sessions",
+        "analytics",
+        "mcp",
+        "claude-code"
+      ],
+      "category": "productivity"
+    }
+  ]
+}
