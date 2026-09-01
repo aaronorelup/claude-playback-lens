@@ -1,4 +1,4 @@
-// src/tools/sessions.mjs — lens_sessions.
+// mcp/tools/sessions.mjs — lens_sessions.
 //
 // The addressing layer. Nothing else on this server is callable without a
 // `slug` + `id`, and this is where an agent gets them: "that session last
@@ -236,7 +236,7 @@ function applyFilters(cards, a, pricing) {
     if (title !== null) {
       const hay = [c.title, c.aiTitle, c.customTitle]
         .filter((t) => typeof t === 'string')
-        .join(' ')
+        .join('\u0000')
         .toLowerCase();
       if (!hay.includes(title)) continue;
     }

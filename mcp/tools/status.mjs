@@ -1,4 +1,4 @@
-// src/tools/status.mjs — lens_status.
+// mcp/tools/status.mjs — lens_status.
 //
 // Orientation, and the recovery path from a "still building" result. Adapts
 // GET /api/hello (the app identity the lens itself answers a port probe with)

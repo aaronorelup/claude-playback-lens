@@ -1,4 +1,4 @@
-// src/render.mjs — the shared text renderers every tool uses.
+// mcp/render.mjs — the shared text renderers every tool uses.
 //
 // The whole point of this server is that an agent reads a compact rendering
 // instead of pulling raw JSON into context, so the rendering IS the product
@@ -693,7 +693,7 @@ export function errorResult(text) {
  * httpMessage(r, { tool, where, also }) — a dispatcher error VALUE as one
  * factual sentence.
  *
- * `r` is what src/dispatch.mjs returns: `{ status, json: { error: { code,
+ * `r` is what mcp/dispatch.mjs returns: `{ status, json: { error: { code,
  * message } } }`. The lens's error CODES are stable and its MESSAGES are
  * written by the route that knows what went wrong, so both are relayed rather
  * than paraphrased — an agent that reads `404 unknown-session — no session

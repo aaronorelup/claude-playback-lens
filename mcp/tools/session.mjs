@@ -1,4 +1,4 @@
-// src/tools/session.mjs — lens_session.
+// mcp/tools/session.mjs — lens_session.
 //
 // "What did that session actually do." One dispatched call to
 // GET /api/session/:slug/:id, rendered as heads and counts — never bodies. A

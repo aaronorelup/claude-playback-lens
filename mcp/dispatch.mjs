@@ -1,4 +1,4 @@
-// src/dispatch.mjs — in-process dispatch of the lens's own HTTP handlers.
+// mcp/dispatch.mjs — in-process dispatch of the lens's own HTTP handlers.
 //
 // This is the load-bearing decision of the whole server, so the reason is
 // recorded here rather than in a ticket.

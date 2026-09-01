@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// scripts/smoke.mjs — call all five tools against the REAL corpus and print
-// what an agent would actually receive.
+// scripts/mcp-smoke.mjs — call all five MCP tools against the REAL corpus and
+// print what an agent would actually receive.
 //
-//   node scripts/smoke.mjs
+//   node scripts/mcp-smoke.mjs
 //
 // This is a DEV SCRIPT, not a test, and it is deliberately not wired into
 // `npm test`. The suite runs against the lens's fixture store, where the totals
@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
-const MCP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // A cold start reads and summarises the whole corpus. Real ones take seconds;
 // this is the ceiling before giving up and saying so.
@@ -38,14 +38,18 @@ const POLL_MS = 1500;
 // The per-tool budgets, in tokens, for the line each call prints. Exceeding one
 // is not a failure here — it is the thing this script exists to show you.
 // recalibrated 2026-08-23 against the real ~30-project corpus at TOOLS_VERSION 2 defaults; original spec §7.1 figures were fixture-scale estimates — see spec addendum.
-const BUDGET_TOK = { lens_status: 175, lens_usage: 525, lens_sessions: 600, lens_search: 700, lens_session: 700 };
+// lens_status raised 175 -> 200 on 2026-08-23: its render scales weakly with the
+// corpus (span line, problem kinds, disclosure counters), and the corpus grew
+// 104 -> 128 sessions between calibration and the KAN-126 merge. 200 gives the
+// measured 190 the same small headroom the other floors carry.
+const BUDGET_TOK = { lens_status: 200, lens_usage: 525, lens_sessions: 600, lens_search: 700, lens_session: 700 };
 
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: [path.join(MCP_DIR, 'lens-mcp.mjs')],
-  cwd: MCP_DIR,
-  // The server logs its lens dir, corpus root, cache dir and index progress to
-  // stderr. Inheriting it means you see the boot for free.
+  args: [path.join(REPO_ROOT, 'mcp', 'lens-mcp.mjs')],
+  cwd: REPO_ROOT,
+  // The server logs its engine root, corpus root, cache dir and index progress
+  // to stderr. Inheriting it means you see the boot for free.
   stderr: 'inherit',
   env: { ...process.env },
 });

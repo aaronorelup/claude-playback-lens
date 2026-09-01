@@ -1,4 +1,4 @@
-// src/tools/usage.mjs — lens_usage.
+// mcp/tools/usage.mjs — lens_usage.
 //
 // Token and dollar usage out of the lens's own ledger, grouped and scoped.
 // This is the tool that kills the hand-written "parse the JSONL and add up the
@@ -57,7 +57,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 //
 // A project slug is a SANITISED ABSOLUTE PATH — on the author's corpus they run
 // to 125 characters and 20 of them share the same 46-character prefix
-// (`C--Users-soulo-Organized-Personal-My-Projects-`). Unbounded, one such
+// (`C--Users-userx-Organized-Personal-My-Projects-`). Unbounded, one such
 // outlier padded all 22 lines of the store table to ~163 characters and made
 // the table 82% of a result 3.7× over its ~300-token budget. 44 keeps the whole
 // distinguishing tail of every slug on this corpus while cutting the column to

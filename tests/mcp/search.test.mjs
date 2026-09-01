@@ -1,4 +1,4 @@
-// tests/search.test.mjs — lens_search (src/tools/search.mjs).
+// tests/mcp/search.test.mjs — lens_search (mcp/tools/search.mjs).
 //
 // lens_search is the one tool that does not go through the dispatcher: it calls
 // the lens's runFind() directly. So what these tests prove is that the adapter
@@ -25,10 +25,10 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createDispatcher } from '../src/dispatch.mjs';
-import * as render from '../src/render.mjs';
-import { TOOLS_VERSION } from '../src/context.mjs';
-import { register } from '../src/tools/search.mjs';
+import { createDispatcher } from '../../mcp/dispatch.mjs';
+import * as render from '../../mcp/render.mjs';
+import { TOOLS_VERSION } from '../../mcp/context.mjs';
+import { register } from '../../mcp/tools/search.mjs';
 import { fixtureContext } from './helpers.mjs';
 
 let H;
@@ -53,7 +53,7 @@ const textOf = (r) => r.content.map((c) => c.text).join('\n');
  * The same tool, registered against a lens bundle whose FIND_MATCH_CAP is
  * smaller.
  *
- * src/tools/search.mjs reads the cap from `lens.limits.FIND_MATCH_CAP` at
+ * mcp/tools/search.mjs reads the cap from `lens.limits.FIND_MATCH_CAP` at
  * registration and passes it to runFind as `cap`, deliberately, so the number
  * it prints is the number the scan used. That indirection is also the test
  * seam: swapping the bundle's `limits` exercises the REAL capped code path —
@@ -588,7 +588,7 @@ function longSlugTool(matches) {
 }
 
 test('a 125-char slug is clipped in the locator column but the id stays whole', async () => {
-  const LONG = 'C--Users-soulo-Organized-Personal-My-Projects-LLM-Monster-Hunter-2-LlmMonsterHunter--claude-worktrees-zealous-goldberg-628237';
+  const LONG = 'C--Users-userx-Organized-Personal-My-Projects-LLM-Monster-Hunter-2-LlmMonsterHunter--claude-worktrees-zealous-goldberg-628237';
   const ID = 'f9a80a4d-8c7c-41d2-95ce-79e9ce3372df';
   assert.equal(LONG.length, 125);
   const t2 = longSlugTool([

@@ -1,4 +1,4 @@
-// src/tools/search.mjs — lens_search.
+// mcp/tools/search.mjs — lens_search.
 //
 // Substring or regex search across every recorded transcript, returning match
 // LOCATORS with one line of context. This is the tool that replaces grepping a
@@ -8,7 +8,7 @@
 // (lens_read) will need to fetch the bytes. Nothing here offers that reader as
 // a callable tool while it does not exist.
 //
-// THE ONE TOOL THAT DOES NOT GO THROUGH src/dispatch.mjs. GET /api/find is SSE:
+// THE ONE TOOL THAT DOES NOT GO THROUGH mcp/dispatch.mjs. GET /api/find is SSE:
 // round-tripping an event stream through the fake response in dispatch.mjs and
 // re-parsing it would be silly when runFind(opts) is already a top-level export
 // of the lens taking an emit(event, data) callback. So runFind is called

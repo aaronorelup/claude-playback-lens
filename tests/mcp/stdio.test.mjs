@@ -1,4 +1,4 @@
-// tests/stdio.test.mjs — KAN-106 §9 acceptance criterion 1, automated.
+// tests/mcp/stdio.test.mjs — KAN-106 §9 acceptance criterion 1, automated.
 //
 //   "node lens-mcp.mjs speaks MCP over stdio and survives tools/list + one
 //    tools/call with ZERO non-JSON-RPC bytes on stdout."
@@ -21,7 +21,7 @@
 // purity claim is actually tested.
 //
 // The corpus is the lens's own fixture store, via CLAUDE_PROJECTS — the same
-// store tests/helpers.mjs builds. The real ~/.claude/projects would make this
+// store tests/mcp/helpers.mjs builds. The real ~/.claude/projects would make this
 // test's runtime a function of the developer's disk.
 
 import { test, before, after } from 'node:test';
@@ -31,7 +31,7 @@ import os from 'node:os';
 import fsp from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
-import { MCP_DIR, LENS_DIR, lensFixtures } from './helpers.mjs';
+import { REPO_ROOT, lensFixtures } from './helpers.mjs';
 
 // The five tools of the phase-1 cut (KAN-106 §8). tools/list must name these
 // and nothing else: a tool that appears without being registered here is a
@@ -68,20 +68,18 @@ let lineBuf = '';
 let nextId = 1;
 
 before(async () => {
-  assert.ok(LENS_DIR, 'no lens directory found — set LENS_DIR');
   const fixtures = await lensFixtures();
   cacheDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'lens-mcp-stdio-'));
 
   // shell:false and the absolute node path: on win32 a shell hop would put
   // cmd.exe between this test and the child's stdio, and the raw bytes this
   // test exists to inspect would be the shell's, not the server's.
-  child = spawn(process.execPath, ['lens-mcp.mjs'], {
-    cwd: MCP_DIR,
+  child = spawn(process.execPath, [path.join('mcp', 'lens-mcp.mjs')], {
+    cwd: REPO_ROOT,
     shell: false,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      LENS_DIR,
       CLAUDE_PROJECTS: fixtures.STORE,
       // An index cache belongs to one process (SPEC §9). This child gets its
       // own so it never contends with the suite's other contexts.

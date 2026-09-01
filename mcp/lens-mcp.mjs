@@ -16,6 +16,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const MCP_DIR = path.dirname(fileURLToPath(import.meta.url));
+// The engine ships in this same package, one directory up. There is no search,
+// no probe and no override: the MCP server and the engine it adapts are one
+// unit, versioned together, and pointing this process at a foreign engine
+// checkout is precisely the version-drift failure the KAN-126 merge removed.
+const REPO_ROOT = path.resolve(MCP_DIR, '..');
 const ARGV = process.argv.slice(2);
 
 // ---------------------------------------------------------------- 1. --help
@@ -28,26 +33,25 @@ const ARGV = process.argv.slice(2);
 if (ARGV.includes('--help') || ARGV.includes('-h')) {
   process.stdout.write(`claude-playback-lens-mcp — MCP server over Claude Code's transcript store
 
-  node lens-mcp.mjs [--lens <dir>]
+  node mcp/lens-mcp.mjs
 
 Speaks MCP over stdio; it is started by an MCP client, not by hand. Running it
 in a terminal is useful only to check that it boots — it will then sit waiting
 for JSON-RPC on stdin.
 
-Finding the lens (first hit wins):
-  --lens <dir>          the Claude Playback Lens directory (the one with lens.mjs)
-  LENS_DIR              same, from the environment
-  sibling probe         ../Claude Playback Lens, then ../claude-playback-lens
+The lens engine ships in this same package (../lens.mjs, ../server, ../shared)
+and is imported directly. There is nothing to point at and nothing to find.
 
 Environment:
   CLAUDE_PROJECTS       corpus root. The lens's own ladder applies:
                         --projects > CLAUDE_PROJECTS > config.json > ~/.claude/projects
-  LENS_CACHE_DIR        index cache location. Defaults to <this repo>/.cache so
-                        this process never contends with the lens UI's cache writer.
+  LENS_CACHE_DIR        index cache location. Defaults to <repo root>/.cache/mcp —
+                        a writer directory of its own, so this process never
+                        contends with the lens UI's cache writer at <repo root>/.cache.
   LENS_MCP_MAX_CHARS    hard cap on one tool result's rendered text (default 20000)
 
 Registering it with Claude Code:
-  claude mcp add lens -- node "<path to this file>"
+  claude mcp add --scope user lens -- node "<repo root>/mcp/lens-mcp.mjs"
 `);
   process.exit(0);
 }
@@ -86,7 +90,7 @@ const log = (msg) => process.stderr.write(`[lens-mcp] ${msg}\n`);
 
 // ---------------------------------------------------------------- 3. SDK import
 //
-// The lens repo is dependency-free; this one is not. If node_modules is
+// The lens engine is dependency-free; this server is not. If node_modules is
 // missing, say so in plain language on stderr — an MCP client shows the user
 // stderr when a server fails to start, and that message is the only diagnostic
 // they will see.
@@ -97,7 +101,7 @@ try {
   ({ serveStdio } = await import('@modelcontextprotocol/server/stdio'));
 } catch (e) {
   process.stderr.write(
-    `Claude Playback Lens MCP needs its dependencies. Run: npm install in ${MCP_DIR}\n`
+    `Claude Playback Lens MCP needs its dependencies. Run: npm install in ${REPO_ROOT}\n`
     + `  (${(e && e.message) || e})\n`,
   );
   process.exit(1);
@@ -105,19 +109,18 @@ try {
 
 // ---------------------------------------------------------------- 4. the lens
 //
-// Locate the lens installation, import its modules, build the same ctx the
-// lens's own main() builds, and start the indexer. start() must complete
-// before any tool is callable: every index-backed route reads ctx.index, and
-// an unstarted index answers 409 for everything.
-const { linkLens } = await import('./src/lens-link.mjs');
-const { createContext, TOOLS_VERSION } = await import('./src/context.mjs');
-const { createDispatcher } = await import('./src/dispatch.mjs');
-const render = await import('./src/render.mjs');
+// mcp/context.mjs statically imports the engine from ../lens.mjs and ../server,
+// builds the same ctx the lens's own main() builds, and hands back the module
+// bundle every tool reads. start() must complete before any tool is callable:
+// every index-backed route reads ctx.index, and an unstarted index answers 409
+// for everything.
+const { createContext, TOOLS_VERSION, lens } = await import('./context.mjs');
+const { createDispatcher } = await import('./dispatch.mjs');
+const render = await import('./render.mjs');
 
-const { lensDir, lensSource, lens } = await linkLens(ARGV, process.env);
-log(`lens: ${lensDir} (from ${lensSource})`);
+log(`lens: ${REPO_ROOT} (in-package — engine and MCP server ship together)`);
 
-const ctx = await createContext({ lens, lensDir, mcpDir: MCP_DIR });
+const ctx = await createContext();
 log(`corpus: ${ctx.projectsDir} (from ${ctx.projectsDirSource})`);
 log(`cache: ${ctx.cacheDir}`);
 
@@ -139,16 +142,17 @@ const deps = {
   ctx,     // the lens's ctx — what the API handlers read
   lens,    // the imported lens module bundle
   call,    // the dispatcher: call(method, pathname, query) -> { status, json }
-  render,  // src/render.mjs, whole namespace
-  meta: { TOOLS_VERSION, lensDir, mcpDir: MCP_DIR },
+  render,  // mcp/render.mjs, whole namespace
+  // lensDir is the engine's own root, which in-package IS the repo root.
+  meta: { TOOLS_VERSION, lensDir: REPO_ROOT, mcpDir: MCP_DIR },
 };
 
 const tools = await Promise.all([
-  import('./src/tools/status.mjs'),
-  import('./src/tools/sessions.mjs'),
-  import('./src/tools/usage.mjs'),
-  import('./src/tools/search.mjs'),
-  import('./src/tools/session.mjs'),
+  import('./tools/status.mjs'),
+  import('./tools/sessions.mjs'),
+  import('./tools/usage.mjs'),
+  import('./tools/search.mjs'),
+  import('./tools/session.mjs'),
 ]);
 
 // serveStdio takes a FACTORY, not a server instance. It calls the factory to

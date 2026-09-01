@@ -1,6 +1,6 @@
 # claude-playback-lens-mcp
 
-An MCP server over [Claude Playback Lens](../Claude%20Playback%20Lens) — the local viewer for
+The MCP server that ships inside [Claude Playback Lens](../README.md) — the local viewer for
 Claude Code's own transcript store (`~/.claude/projects`). It gives an agent the answers people
 currently get by writing a throwaway parse script over a gigabyte of JSONL: what a project cost
 this week, which session did X, what a past session actually did. Every figure it reports is a
@@ -8,8 +8,12 @@ recorded fact from the transcripts or arithmetic over recorded facts — nothing
 nothing is summarised by a model, and an unknown value renders `—`, never `0`. All five phase-1
 tools are implemented.
 
-This repo is also meant to be **read**. It is a small, complete, single-purpose MCP server with
-its reasons written down next to its code, which is a thing that is otherwise hard to find. If
+The engine it adapts — `lens.mjs`, `server/`, `shared/` — is one directory up, in this same
+package, and is imported with ordinary relative imports. There is no lens to locate and no
+version of it other than the one shipped here.
+
+This directory is also meant to be **read**. It is a small, complete, single-purpose MCP server
+with its reasons written down next to its code, which is a thing that is otherwise hard to find. If
 you are building your own, the parts worth stealing are the [in-process dispatch](#the-load-bearing-decision-in-process-dispatch),
 the [stdout rule](#stdout-is-the-wire), and the [output discipline](#output-discipline).
 
@@ -19,7 +23,7 @@ the [stdout rule](#stdout-is-the-wire), and the [output discipline](#output-disc
 
 Less than the acronym suggests. An MCP server over stdio is:
 
-- **A process the client spawns.** Claude Code launches `node lens-mcp.mjs` as a child process
+- **A process the client spawns.** Claude Code launches `node mcp/lens-mcp.mjs` as a child process
   and talks to it over that child's stdin and stdout. There is no port, no URL, no daemon. When
   the client exits, the server exits.
 - **Speaking JSON-RPC 2.0, newline-delimited.** One JSON object per line on stdout, one per line
@@ -39,52 +43,51 @@ says — which is the whole job, and the reason the rest of this README is about
 ## How this one works
 
 ```
-lens-mcp.mjs          entry: --help, stdout guard, SDK import, boot, serve
-src/
-  lens-link.mjs       locate the lens and import its modules across the repo boundary
-  context.mjs         build the ctx the lens's API handlers consume; TOOLS_VERSION
-  dispatch.mjs        in-process dispatch of the lens's own HTTP handlers
-  render.mjs          the shared renderers — and where the output rules are enforced
-  tools/*.mjs         one file per tool, each exporting register(server, deps)
-scripts/
-  smoke.mjs           call all five tools against the REAL corpus and print sizes (dev only)
-tests/                196 tests; stdio.test.mjs drives the real process over a real pipe
+<repo root>/
+  lens.mjs            the engine: CLI, config ladder, index state (imported, never spawned)
+  server/  shared/     the engine's modules — the same ones the web UI serves from
+  mcp/
+    lens-mcp.mjs      entry: --help, stdout guard, SDK import, boot, serve
+    context.mjs       import the engine; build the ctx its API handlers consume; TOOLS_VERSION
+    dispatch.mjs      in-process dispatch of the engine's own HTTP handlers
+    render.mjs        the shared renderers — and where the output rules are enforced
+    tools/*.mjs       one file per tool, each exporting register(server, deps)
+  scripts/
+    mcp-smoke.mjs     call all five tools against the REAL corpus and print sizes (dev only)
+  tests/mcp/          227 tests; stdio.test.mjs drives the real process over a real pipe
 ```
 
-### Finding the lens
+### Importing the engine
 
-The lens repo is deliberately **dependency-free** — `node lens.mjs` runs the whole viewer with an
-empty `node_modules`. An MCP server needs the SDK and zod, so the two live in separate repos and
-this one imports the other by absolute path. `src/lens-link.mjs` walks a ladder at startup, first
-hit wins:
+`mcp/context.mjs` imports `../lens.mjs`, `../server/*.mjs` and `../shared/pricing.mjs` as static
+relative imports and exports the bundle every tool reads. Importing `lens.mjs` as a module is
+safe: its `main()` is guarded by `invokedDirectly`, so loading it starts nothing.
 
-1. `--lens <dir>` on the command line
-2. `LENS_DIR` in the environment
-3. a sibling of this repo named `Claude Playback Lens`, then `claude-playback-lens`
+There is deliberately **no override** — no flag, no environment variable, no probe. The MCP server
+and the engine are one versioned unit; letting an operator aim a packaged server at some other
+engine checkout is the drift failure this arrangement exists to remove. A broken import is now an
+ordinary module-load error, and node names the file.
 
-A candidate counts only if it contains `lens.mjs`. If none does, the process prints the ladder it
-tried to **stderr** and exits — an MCP client shows the user stderr when a server fails to start,
-so that message is the only diagnostic they will ever see.
-
-Everything below `lens.mjs` is then imported through the lens's *own* exported `tryImport(rel)`
-rather than by building paths here, so module resolution stays anchored in the lens repo: if the
-lens moves a file, the lens's resolver is what breaks, in one place, with the lens's own message.
+(The engine keeps its own property: it is **dependency-free**, and `node lens.mjs` still runs the
+whole viewer with an empty `node_modules`. The SDK and zod are dependencies of the package, needed
+only by the files under `mcp/`; nothing the viewer runs imports them.)
 
 ### The ctx
 
 `lens.mjs`'s `main()` builds a `ctx` object — corpus root, the imported module set, and
-`createIndexState(…)`, the index layer that owns the background worker. `src/context.mjs` builds
-*the same object from the same modules*, so the lens's HTTP handlers cannot tell whether a request
-arrived over a socket or was dispatched in-process. Three deliberate divergences, all visible in
-that file's header comment: no listen/port/browser; progress logging to stderr instead of
-`console.log`; and the index cache defaults to `<this repo>/.cache` rather than the lens's, because
-an index cache belongs to one running process and this one must not contend with the UI's writer.
+`createIndexState(…)`, the index layer that owns the background worker. `mcp/context.mjs` builds
+*the same object from the same modules*, so the engine's HTTP handlers cannot tell whether a
+request arrived over a socket or was dispatched in-process. Three deliberate divergences, all
+visible in that file's header comment: no listen/port/browser; progress logging to stderr instead
+of `console.log`; and the index cache defaults to `<repo root>/.cache/mcp` rather than the UI's
+`<repo root>/.cache`, because an index cache belongs to one running process and this one must not
+contend with the UI's writer.
 
 `await ctx.index.start()` completes before a single tool is served.
 
 ### The load-bearing decision: in-process dispatch
 
-`src/dispatch.mjs` reimplements none of the lens's aggregation. It builds the lens's router,
+`mcp/dispatch.mjs` reimplements none of the lens's aggregation. It builds the lens's router,
 registers the lens's own `createApi(router, ctx)` against that ctx, and dispatches synthetic
 requests through it with a ~50-line capturing fake response.
 
@@ -122,7 +125,7 @@ stdout straight into the parent's real stdout unless the worker is constructed w
 bypass the redirect entirely and land on the wire. Nothing in the lens's worker-side code writes
 to stdout today, but that is a property of the lens, not something this repo can enforce in code.
 
-What enforces it is the test. `tests/stdio.test.mjs` spawns the real process with the real worker
+What enforces it is the test. `tests/mcp/stdio.test.mjs` spawns the real process with the real worker
 running, drives a real session, and keeps every raw byte off the pipe to assert that each line is a
 JSON-RPC message and that nothing else is present — deliberately hand-rolling the protocol rather
 than using the client SDK, because a client that successfully reads four messages proves the four
@@ -145,6 +148,8 @@ reindex — enforced at the surface: no tool maps to a mutating route.
 
 ## Setup
 
+From the repo root:
+
 ```sh
 npm install
 ```
@@ -152,7 +157,13 @@ npm install
 Then register it with Claude Code:
 
 ```sh
-claude mcp add lens -- node "C:\path\to\claude-playback-lens-mcp\lens-mcp.mjs"
+claude mcp add --scope user lens -- node "C:\path\to\Claude Playback Lens\mcp\lens-mcp.mjs"
+```
+
+Once the package is published, the same registration without a checkout:
+
+```sh
+claude mcp add --scope user lens -- npx -y claude-playback-lens-mcp
 ```
 
 or add it to `.claude.json` (`~/.claude.json` for every project, or a project-local one):
@@ -162,9 +173,8 @@ or add it to `.claude.json` (`~/.claude.json` for every project, or a project-lo
   "mcpServers": {
     "lens": {
       "command": "node",
-      "args": ["C:\\path\\to\\claude-playback-lens-mcp\\lens-mcp.mjs"],
+      "args": ["C:\\path\\to\\Claude Playback Lens\\mcp\\lens-mcp.mjs"],
       "env": {
-        "LENS_DIR": "C:\\path\\to\\Claude Playback Lens",
         "CLAUDE_PROJECTS": "C:\\Users\\you\\.claude\\projects"
       }
     }
@@ -172,26 +182,25 @@ or add it to `.claude.json` (`~/.claude.json` for every project, or a project-lo
 }
 ```
 
-Both `env` entries are optional: `LENS_DIR` can be omitted when this repo sits beside the lens, and
-`CLAUDE_PROJECTS` when the corpus is at the default `~/.claude/projects`. Edits to this repo take
-effect on the next client restart.
+The `env` block is optional: `CLAUDE_PROJECTS` is only needed when the corpus is somewhere other
+than the default `~/.claude/projects`. Edits to this repo take effect on the next client restart.
 
-To see it work outside a client, `node scripts/smoke.mjs` spawns the server against your real
-corpus, calls all five tools, and prints each rendered result with its size.
+To see it work outside a client, `node scripts/mcp-smoke.mjs` (from the repo root) spawns the
+server against your real corpus, calls all five tools, and prints each rendered result with its
+size.
 
 ## Environment
 
 | Variable | Effect |
 |---|---|
-| `LENS_DIR` | Where the lens is installed — the directory containing `lens.mjs`. Rung 2 of the ladder above. |
-| `CLAUDE_PROJECTS` | Corpus root. Rung 2 of the *lens's* own ladder: `--projects` → `CLAUDE_PROJECTS` → `config.json` → `~/.claude/projects`. The winning rung is reported by `lens_status`, so there is never any doubt about which corpus a figure came from. |
-| `LENS_CACHE_DIR` | Index cache location. **Defaults to `<this repo>/.cache`**, not the lens's own cache. An index cache belongs to one running process; if the lens UI is open it is that process, and two writers on one cache dir double the scan and overwrite each other's `index.json`. |
+| `CLAUDE_PROJECTS` | Corpus root. Rung 2 of the *engine's* own ladder: `--projects` → `CLAUDE_PROJECTS` → `config.json` → `~/.claude/projects`. The winning rung is reported by `lens_status`, so there is never any doubt about which corpus a figure came from. |
+| `LENS_CACHE_DIR` | Index cache location. **Defaults to `<repo root>/.cache/mcp`** — a writer directory of its own, one level below the UI's `<repo root>/.cache`. An index cache belongs to one running process; if the lens UI is open it is that process, and two writers on one cache dir double the scan and overwrite each other's `index.json`. |
 | `LENS_MCP_MAX_CHARS` | Hard backstop on one tool result's rendered text, under every per-tool cap. Default 20000. Truncation is always stated in the result and names the parameter to narrow — a silent truncation is a correctness bug, not a formatting one. |
 
 ## Output discipline
 
 The rendering *is* the product — an agent reads it instead of pulling raw JSON into context — so
-the rules are enforced in `src/render.mjs` rather than remembered per tool.
+the rules are enforced in `mcp/render.mjs` rather than remembered per tool.
 
 - **`null` renders `—`; `0` renders `0`.** They are different recorded facts and never collapse. A
   workflow agent with `agg: null` was never parsed; one with `usd.total: 0` billed nothing.
@@ -199,7 +208,7 @@ the rules are enforced in `src/render.mjs` rather than remembered per tool.
   inline or on the `basis:` line. Never a bare total.
 - **Every nonzero disclosure counter appears.** The lens tracks the rows it could not price
   exactly (`inherited`, `unpriced`, `synthetic`, `ttlAssumed`, …). `render.mjs` enumerates them in
-  one list and `tests/render.test.mjs` enumerates the ledger's own `emptyCostAgg()` keys against
+  one list and `tests/mcp/render.test.mjs` enumerates the ledger's own `emptyCostAgg()` keys against
   it, so adding a counter to the ledger without adding it here fails the suite. The `LITE`
   aggregate that rides session cards flattens two of those counters into scalars, and has its own
   renderer for exactly that reason — feeding a lite agg to the full renderer would drop the two
@@ -222,17 +231,17 @@ the rules are enforced in `src/render.mjs` rather than remembered per tool.
   fails at the tool boundary, and sends the reader into the raw JSONL by hand — the exact work
   these tools exist to remove. A phase-2 tool may be *named* only next to the fact that it is not
   callable yet, and the locator that made the hint worth printing survives as data either way. The
-  rule is enforced by `assertHonestHints` in `tests/helpers.mjs`, run against `lens_search`,
+  rule is enforced by `assertHonestHints` in `tests/mcp/helpers.mjs`, run against `lens_search`,
   `lens_session` and `lens_usage` output.
 
 ## Token budgets
 
-Measured by `scripts/smoke.mjs` against a real corpus — 104 sessions, 1.4 GB, 31 projects — on
+Measured by `scripts/mcp-smoke.mjs` against a real corpus — 104 sessions, 1.4 GB, 31 projects — on
 2026-08-23, at `TOOLS_VERSION` 2 defaults. The token figure is the standard chars/4 proxy.
 
 | Call | Chars | ≈ Tokens | Budget |
 |---|---:|---:|---:|
-| `lens_status {}` | 680 | 170 | 175 |
+| `lens_status {}` | 761 | 190 | 200 |
 | `lens_usage {scope:"store", group_by:"project"}` | 2088 | 522 | 525 |
 | `lens_sessions {limit:5}` | 1692 | 423 | 600 |
 | `lens_search {q:"the", limit:5}` | 2721 | 680 | 700 |
@@ -242,7 +251,7 @@ Measured by `scripts/smoke.mjs` against a real corpus — 104 sessions, 1.4 GB, 
 (150 / 300 / 600 / 700 / 500) were written before a line of the renderer existed, against
 three-row output sketches at fixture scale — eight-character slugs, two sessions, no disclosures.
 They are not what this corpus can achieve, so they were replaced by numbers measured on it. The
-originals are recorded in the spec addendum; `scripts/smoke.mjs` carries the new ones.
+originals are recorded in the spec addendum; `scripts/mcp-smoke.mjs` carries the new ones.
 
 **All five are inside their budget.** `lens_usage` came down twice to get there. First by
 clipping the locator column for DISPLAY (the `…` marker is always present, so a clipped name can
@@ -289,26 +298,24 @@ this server was built to prevent.
 
 ## Requirements
 
-- **Node ≥ 20.** The lens itself runs on Node ≥ 18; the MCP SDK raises the floor to 20.
-- **A Claude Playback Lens checkout on the same machine**, findable by the ladder above — a sibling
-  directory, or `LENS_DIR`.
-- **`npm install` in this directory.** The lens repo is dependency-free and must stay that way;
-  this one takes `@modelcontextprotocol/server` and `zod`. That is the whole reason they are two
-  repos: nothing the viewer runs imports the adapter.
+- **Node ≥ 20.** The engine itself runs on Node ≥ 18; the MCP SDK raises the floor to 20.
+- **`npm install` at the repo root.** The engine is dependency-free and must stay that way; the
+  package takes `@modelcontextprotocol/server` and `zod` for the files under `mcp/`. Nothing the
+  viewer runs imports the adapter, and a test enforces that.
 
 ## Tests
 
 ```sh
-npm test
+node --test "tests/mcp/*.test.mjs"
 ```
 
-196 tests. They run against the lens's own fixture store (`tests/fixtures/api/make-store.mjs` in the
-lens repo), whose expected totals are hand-computed literals rather than figures re-derived by the
-code under test. Set `LENS_DIR` if this repo is not a sibling of the lens.
+227 tests, run from the repo root. They use the engine's own fixture store
+(`tests/fixtures/api/make-store.mjs`), whose expected totals are hand-computed literals rather than
+figures re-derived by the code under test. `npm test` runs them together with the engine's suite.
 
-`tests/stdio.test.mjs` is the process-level one: it spawns `node lens-mcp.mjs`, hand-rolls a full
-JSON-RPC session over the pipe, and asserts the stdout purity property described above. It kills
-the child in teardown — an un-killed indexer worker would keep the suite from ever exiting.
+`tests/mcp/stdio.test.mjs` is the process-level one: it spawns `node mcp/lens-mcp.mjs`, hand-rolls
+a full JSON-RPC session over the pipe, and asserts the stdout purity property described above. It
+kills the child in teardown — an un-killed indexer worker would keep the suite from ever exiting.
 
 ## Versions
 

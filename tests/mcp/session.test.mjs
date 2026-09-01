@@ -1,4 +1,4 @@
-// tests/session.test.mjs — lens_session (src/tools/session.mjs).
+// tests/mcp/session.test.mjs — lens_session (mcp/tools/session.mjs).
 //
 // The header facts are asserted against the fixture store's own exports and
 // hand-computed totals (tests/fixtures/api/make-store.mjs EXPECT), never
@@ -18,10 +18,10 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createDispatcher } from '../src/dispatch.mjs';
-import * as render from '../src/render.mjs';
-import { TOOLS_VERSION } from '../src/context.mjs';
-import { register } from '../src/tools/session.mjs';
+import { createDispatcher } from '../../mcp/dispatch.mjs';
+import * as render from '../../mcp/render.mjs';
+import { TOOLS_VERSION } from '../../mcp/context.mjs';
+import { register } from '../../mcp/tools/session.mjs';
 import {
   fixtureContext, assertHonestHints, literalCalls, PHASE1_TOOLS, UNBUILT_TOOLS,
 } from './helpers.mjs';
@@ -29,7 +29,7 @@ import {
 let H;
 let tool;
 
-// See tests/search.test.mjs — the same stand-in, so a tool is invoked through
+// See tests/mcp/search.test.mjs — the same stand-in, so a tool is invoked through
 // its own zod schema and therefore through the same defaults the SDK applies.
 function harness(deps) {
   let reg = null;
@@ -223,7 +223,7 @@ test('a session with no real turn omits the turn hint rather than naming turn 1'
 // The same guard lens_search carries, applied to lens_session. This renderer
 // used to spell out `lens_rows scope="turn:…"` and
 // `lens_workflow slug=… id=… run_id=…` — two tools this server does not
-// register. See tests/helpers.mjs assertHonestHints for the rule.
+// register. See tests/mcp/helpers.mjs assertHonestHints for the rule.
 
 test('no lens_session render offers a phase-2 tool as a callable', async () => {
   const { SLUG, S1, S2 } = H.fixtures;
@@ -306,7 +306,7 @@ test('a long recorded file path is clipped for DISPLAY only, tail kept and marke
   // recorded path — absolute, deep, and sitting next to a short one that the
   // unbounded aligner would pad out to its width. So the /files payload is
   // synthesised here; every other route still goes to the real dispatcher.
-  const LONG = 'C:\\Users\\soulo\\Organized\\Personal\\My Projects\\Claude Playback Lens\\web\\js\\views\\l5\\blockview.mjs';
+  const LONG = 'C:\\Users\\userx\\Organized\\Personal\\My Projects\\Claude Playback Lens\\web\\js\\views\\l5\\blockview.mjs';
   assert.ok(LONG.length > 60);
   const real = createDispatcher(H.lens, H.ctx);
   const t2 = harness({

@@ -1,16 +1,18 @@
-// tests/helpers.mjs — shared test setup.
+// tests/mcp/helpers.mjs — shared test setup for the MCP server's suite.
 //
-// The tests run against the lens's own committed test fixture store, not
-// against the developer's real ~/.claude/projects: the fixture has
-// hand-computed expected totals (tests/fixtures/api/make-store.mjs EXPECT)
-// that a real corpus cannot provide, and it is small enough to index in
-// milliseconds.
+// The tests run against the engine's own test fixture store, not against the
+// developer's real ~/.claude/projects: the fixture has hand-computed expected
+// totals (tests/fixtures/api/make-store.mjs EXPECT) that a real corpus cannot
+// provide, and it is small enough to index in milliseconds.
 //
-// The fixture store is generated rather than committed (it is listed in the
-// lens's .gitignore), and the lens's own tests call makeStore() in a `before`
-// hook on every run. So calling it here writes nothing the lens repo does not
-// already write for itself; makeStore is idempotent and leaves unchanged files
-// untouched.
+// The fixture store is generated rather than committed (it is listed in
+// .gitignore) and the lens's own tests call makeStore() in a `before` hook on
+// every run, so calling it here writes nothing the suite does not already
+// write; makeStore is idempotent and leaves unchanged files untouched.
+//
+// Since the KAN-126 merge the engine is in this same repo, so the fixture is a
+// plain relative import away — no lens directory to locate, and nothing to set
+// in the environment before running the suite.
 //
 // LENS_CACHE_DIR is pointed at a scratch directory per run for the same reason
 // createContext isolates it in normal operation: an index cache belongs to one
@@ -19,26 +21,25 @@
 import path from 'node:path';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
-import { findLensDir, linkLens } from '../src/lens-link.mjs';
-import { createContext } from '../src/context.mjs';
+import { createContext, lens } from '../../mcp/context.mjs';
+import * as fixtures from '../fixtures/api/make-store.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const MCP_DIR = path.resolve(HERE, '..');
 
-// The lens directory, via the same ladder the server uses. Tests are expected
-// to be run with LENS_DIR set, or from a checkout sitting beside the lens.
-export const LENS_DIR = findLensDir(process.argv.slice(2), process.env).dir;
+/** The repo root — engine, MCP server and this suite all live under it. */
+export const REPO_ROOT = path.resolve(HERE, '../..');
+/** The MCP server's own directory. */
+export const MCP_DIR = path.join(REPO_ROOT, 'mcp');
 
-/** Import the lens's fixture-store builder and build the store. Returns the
- *  module namespace so a test can read STORE / EXPECT / SLUG / S1 / S2. */
+export { lens };
+
+/** Build the engine's fixture store. Returns the module namespace so a test
+ *  can read STORE / EXPECT / SLUG / S1 / S2. */
 export async function lensFixtures() {
-  if (!LENS_DIR) throw new Error('no lens directory found — set LENS_DIR');
-  const url = pathToFileURL(path.join(LENS_DIR, 'tests', 'fixtures', 'api', 'make-store.mjs')).href;
-  const mod = await import(url);
-  await mod.makeStore();
-  return mod;
+  await fixtures.makeStore();
+  return fixtures;
 }
 
 /**
@@ -47,16 +48,15 @@ export async function lensFixtures() {
  * worker thread and would otherwise keep the test process alive.
  */
 export async function fixtureContext() {
-  const fixtures = await lensFixtures();
+  const store = await lensFixtures();
 
   // The corpus root and the cache dir are both process-global inputs to the
   // lens's own resolution ladders, so they are set here rather than passed.
-  process.env.CLAUDE_PROJECTS = fixtures.STORE;
+  process.env.CLAUDE_PROJECTS = store.STORE;
   const cacheDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'lens-mcp-test-'));
   process.env.LENS_CACHE_DIR = cacheDir;
 
-  const { lens, lensDir } = await linkLens([], { LENS_DIR });
-  const ctx = await createContext({ lens, lensDir, mcpDir: MCP_DIR });
+  const ctx = await createContext();
   // start() spawns the indexer and returns; it does not wait for the build.
   // The fixture store is two sessions, so waiting for 'ready' is fast and
   // makes the assertions below deterministic.
@@ -66,7 +66,7 @@ export async function fixtureContext() {
   return {
     ctx,
     lens,
-    fixtures,
+    fixtures: store,
     async close() {
       await ctx.index.close();
       await fsp.rm(cacheDir, { recursive: true, force: true }).catch(() => {});

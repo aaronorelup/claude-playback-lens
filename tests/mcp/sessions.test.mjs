@@ -1,4 +1,4 @@
-// tests/sessions.test.mjs — lens_sessions (src/tools/sessions.mjs).
+// tests/mcp/sessions.test.mjs — lens_sessions (mcp/tools/sessions.mjs).
 //
 // The tool is the addressing layer: everything else on this server needs the
 // `slug` + `id` it prints. So what is proved here is less "the code runs" than
@@ -20,11 +20,11 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import * as render from '../src/render.mjs';
-import { createDispatcher } from '../src/dispatch.mjs';
-import { register } from '../src/tools/sessions.mjs';
-import { TOOLS_VERSION } from '../src/context.mjs';
-import { fixtureContext, LENS_DIR, MCP_DIR } from './helpers.mjs';
+import * as render from '../../mcp/render.mjs';
+import { createDispatcher } from '../../mcp/dispatch.mjs';
+import { register } from '../../mcp/tools/sessions.mjs';
+import { TOOLS_VERSION } from '../../mcp/context.mjs';
+import { fixtureContext, REPO_ROOT, MCP_DIR } from './helpers.mjs';
 
 let H;      // { ctx, lens, fixtures, close }
 let call;   // the real dispatcher
@@ -71,7 +71,7 @@ function tool(callOverride = null) {
     lens: H.lens,
     call: callOverride || call,
     render,
-    meta: { TOOLS_VERSION, lensDir: LENS_DIR, mcpDir: MCP_DIR },
+    meta: { TOOLS_VERSION, lensDir: REPO_ROOT, mcpDir: MCP_DIR },
   });
   return server.get('lens_sessions');
 }

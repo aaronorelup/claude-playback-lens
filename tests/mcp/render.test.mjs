@@ -1,4 +1,4 @@
-// tests/render.test.mjs — the shared renderers (src/render.mjs).
+// tests/mcp/render.test.mjs — the shared renderers (mcp/render.mjs).
 //
 // The first test is the important one. SPEC §9's drift rule says every
 // disclosure counter on CostAgg has exactly one UI chip and one audit census;
@@ -7,16 +7,11 @@
 // the renderer, the test enumerates emptyCostAgg()'s own keys and fails if any
 // of them is in neither list.
 
-import { test, before } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import * as render from '../src/render.mjs';
-import { linkLens, findLensDir } from '../src/lens-link.mjs';
-
-let lens;
-before(async () => {
-  ({ lens } = await linkLens([], { LENS_DIR: findLensDir([], process.env).dir }));
-});
+import * as render from '../../mcp/render.mjs';
+import { lens } from '../../mcp/context.mjs';
 
 test('every CostAgg key is classified as a disclosure or explicitly not one', () => {
   const agg = lens.ledger.emptyCostAgg();
@@ -24,7 +19,7 @@ test('every CostAgg key is classified as a disclosure or explicitly not one', ()
 
   const unclassified = Object.keys(agg).filter((k) => !known.has(k));
   assert.deepEqual(unclassified, [],
-    'a CostAgg key exists that src/render.mjs neither renders as a disclosure nor '
+    'a CostAgg key exists that mcp/render.mjs neither renders as a disclosure nor '
     + 'lists in NON_DISCLOSURE_KEYS. If it is a disclosure counter, add it to '
     + 'DISCLOSURE_KEYS so renderDisclosures() prints it; if it is a headline '
     + 'figure or an R8 metric, add it to NON_DISCLOSURE_KEYS.');
@@ -267,7 +262,7 @@ test('table pads columns and never emits trailing whitespace', () => {
 });
 
 test('clipCell keeps the tail by default and ALWAYS leaves the … marker', () => {
-  const slug = 'C--Users-soulo-Organized-Personal-My-Projects-LLM-Monster-Hunter-2-LlmMonsterHunter--claude-worktrees-zealous-goldberg-628237';
+  const slug = 'C--Users-userx-Organized-Personal-My-Projects-LLM-Monster-Hunter-2-LlmMonsterHunter--claude-worktrees-zealous-goldberg-628237';
   // Verbatim off the real corpus — a git-worktree project root, sanitised into
   // a directory name. This is the outlier that padded the whole usage table.
   assert.equal(slug.length, 125);
@@ -300,7 +295,7 @@ test('clipCell keeps the tail by default and ALWAYS leaves the … marker', () =
 // path or project slug — and a lone surrogate is not a character: Node's UTF-8
 // encoder silently replaces it with U+FFFD on the way out to the JSON-RPC
 // frame, so the row ships a corruption glyph nobody asked for.
-const PATH_WITH_EMOJI = 'C:/Users/soulo/deep/deep/deep/deep/\u{1F600}folder/file.txt';
+const PATH_WITH_EMOJI = 'C:/Users/userx/deep/deep/deep/deep/\u{1F600}folder/file.txt';
 // A high surrogate with no low after it, or a low with no high before it.
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 /** Encoding to UTF-8 and back is lossless for real text and lossy for a lone
@@ -324,7 +319,7 @@ test('clipCell never cuts a surrogate pair in half', () => {
   const head = render.clipCell(PATH_WITH_EMOJI, 37, 'head');
   assert.ok(!LONE_SURROGATE.test(head), JSON.stringify(head));
   assert.ok(utf8RoundTrips(head), 'a head clip is encodable as UTF-8');
-  assert.equal(head, 'C:/Users/soulo/deep/deep/deep/deep/…');
+  assert.equal(head, 'C:/Users/userx/deep/deep/deep/deep/…');
   assert.ok(head.length <= 37);
   assert.ok(!head.includes('\uFFFD'));
 });
@@ -338,7 +333,7 @@ test('clipCell keeps an astral character WHOLE when the cut does not split it', 
   assert.ok(utf8RoundTrips(tail));
 
   const head = render.clipCell(PATH_WITH_EMOJI, 38, 'head');
-  assert.equal(head, 'C:/Users/soulo/deep/deep/deep/deep/\u{1F600}…');
+  assert.equal(head, 'C:/Users/userx/deep/deep/deep/deep/\u{1F600}…');
   assert.equal(head.length, 38);
   assert.ok(utf8RoundTrips(head));
 
@@ -347,15 +342,15 @@ test('clipCell keeps an astral character WHOLE when the cut does not split it', 
 });
 
 test('table clips a column to opts.max BEFORE measuring widths, so the column shrinks', () => {
-  const long = 'C--Users-soulo-Organized-Personal-My-Projects-Claude-Playback-Lens';
+  const long = 'C--Users-userx-Organized-Personal-My-Projects-Claude-Playback-Lens';
   const rows = [
     ['project', 'requests'],
     [long, '14,769'],
-    ['C--Users-soulo', '2,775'],
+    ['C--Users-userx', '2,775'],
   ];
   // Unbounded: one outlier pads every other row in its column to 65 chars.
   const wide = render.table(rows, { align: ['l', 'r'] }).split('\n');
-  assert.ok(wide[2].startsWith(`C--Users-soulo${' '.repeat(long.length - 14)}`), wide[2]);
+  assert.ok(wide[2].startsWith(`C--Users-userx${' '.repeat(long.length - 14)}`), wide[2]);
 
   const narrow = render.table(rows, { align: ['l', 'r'], max: [24], clip: ['tail'] }).split('\n');
   for (const l of narrow) assert.equal(l, l.replace(/\s+$/, ''), 'no trailing whitespace');
@@ -363,7 +358,7 @@ test('table clips a column to opts.max BEFORE measuring widths, so the column sh
   assert.match(narrow[1], /^…ts-Claude-Playback-Lens {2}14,769$/);
   // ...and the SHORT cell is now padded to the ceiling, not to the outlier's
   // real width. That is the whole defect: 24 - 14 = 10 pad + the 2-char gap.
-  assert.match(narrow[2], /^C--Users-soulo {12}2,775$/);
+  assert.match(narrow[2], /^C--Users-userx {12}2,775$/);
   // Every line is shorter than the unbounded render by the width the ceiling
   // removed — the point of the whole exercise.
   for (let i = 0; i < narrow.length; i++) assert.ok(narrow[i].length < wide[i].length, `line ${i}`);

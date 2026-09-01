@@ -1,4 +1,4 @@
-// tests/dispatch.test.mjs — the in-process router dispatch (src/dispatch.mjs).
+// tests/mcp/dispatch.test.mjs — the in-process router dispatch (mcp/dispatch.mjs).
 //
 // What is being proved here is the load-bearing claim of the whole server:
 // dispatching a synthetic request through the lens's own router produces the
@@ -9,7 +9,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createDispatcher } from '../src/dispatch.mjs';
+import { createDispatcher } from '../../mcp/dispatch.mjs';
 import { fixtureContext } from './helpers.mjs';
 
 let H; // { ctx, lens, fixtures, close }

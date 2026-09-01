@@ -1,4 +1,4 @@
-// tests/status.test.mjs — lens_status (src/tools/status.mjs).
+// tests/mcp/status.test.mjs — lens_status (mcp/tools/status.mjs).
 //
 // lens_status is the orientation tool and the recovery path out of a "still
 // building" result, so its renderer is the one place an agent looks when it
@@ -23,7 +23,7 @@
 //
 // The fixture store indexes cleanly and instantly, so it only ever produces
 // the `ready` state. Every other state is injected at the dispatcher seam —
-// the same technique tests/sessions.test.mjs uses for its 409 and its
+// the same technique tests/mcp/sessions.test.mjs uses for its 409 and its
 // null-agg card — because those shapes exist only on a messier corpus.
 //
 // DELIBERATELY NOT ASSERTED: the presence or absence of any line naming the
@@ -34,11 +34,11 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import * as render from '../src/render.mjs';
-import { createDispatcher } from '../src/dispatch.mjs';
-import { register } from '../src/tools/status.mjs';
-import { TOOLS_VERSION } from '../src/context.mjs';
-import { fixtureContext, LENS_DIR, MCP_DIR } from './helpers.mjs';
+import * as render from '../../mcp/render.mjs';
+import { createDispatcher } from '../../mcp/dispatch.mjs';
+import { register } from '../../mcp/tools/status.mjs';
+import { TOOLS_VERSION } from '../../mcp/context.mjs';
+import { fixtureContext, REPO_ROOT, MCP_DIR } from './helpers.mjs';
 
 let H;      // { ctx, lens, fixtures, close }
 let call;   // the real in-process dispatcher
@@ -83,7 +83,7 @@ function tool(callOverride = null) {
     lens: H.lens,
     call: callOverride || call,
     render,
-    meta: { TOOLS_VERSION, lensDir: LENS_DIR, mcpDir: MCP_DIR },
+    meta: { TOOLS_VERSION, lensDir: REPO_ROOT, mcpDir: MCP_DIR },
   });
   return server.get('lens_status');
 }

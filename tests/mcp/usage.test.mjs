@@ -1,4 +1,4 @@
-// tests/usage.test.mjs — lens_usage.
+// tests/mcp/usage.test.mjs — lens_usage.
 //
 // The tool's whole claim is that its numbers ARE the lens's numbers, so the
 // assertions here are number-for-number against the fixture store's
@@ -15,13 +15,13 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createDispatcher } from '../src/dispatch.mjs';
-import * as render from '../src/render.mjs';
-import { register } from '../src/tools/usage.mjs';
+import { createDispatcher } from '../../mcp/dispatch.mjs';
+import * as render from '../../mcp/render.mjs';
+import { register } from '../../mcp/tools/usage.mjs';
 import {
   fixtureContext, assertHonestHints, literalCalls, PHASE1_TOOLS, UNBUILT_TOOLS,
 } from './helpers.mjs';
-import { TOOLS_VERSION } from '../src/context.mjs';
+import { TOOLS_VERSION } from '../../mcp/context.mjs';
 
 let H;      // { ctx, lens, fixtures, close }
 let call;   // the in-process dispatcher
@@ -162,7 +162,7 @@ test('default output stays inside its ~525-token budget', async () => {
 // must still be addressable from the same result.
 
 // Verbatim off the real corpus — a git-worktree project root.
-const LONG_SLUG = 'C--Users-soulo-Organized-Personal-My-Projects-LLM-Monster-Hunter-2-LlmMonsterHunter--claude-worktrees-zealous-goldberg-628237';
+const LONG_SLUG = 'C--Users-userx-Organized-Personal-My-Projects-LLM-Monster-Hunter-2-LlmMonsterHunter--claude-worktrees-zealous-goldberg-628237';
 
 /** lens_usage registered over a /api/index whose one project wears LONG_SLUG.
  *  Everything else is the real dispatcher's real payload. */
@@ -809,7 +809,7 @@ test('structured output is opt-in and carries exact integer tcu', async () => {
 // renderer's `next:` hints named lens_rows — `lens_rows scope="turn:…"` under
 // a turn/agent scope, and `lens_rows scope="agent:…"` under group_by=agent.
 // lens_rows is phase 2 and this server does not register it, so both read as
-// callable and dead-ended. See tests/helpers.mjs assertHonestHints.
+// callable and dead-ended. See tests/mcp/helpers.mjs assertHonestHints.
 
 test('no lens_usage render offers a phase-2 tool as a callable', async () => {
   const { SLUG, S1, A1 } = H.fixtures;
