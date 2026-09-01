@@ -31,3 +31,8 @@ claude/
 # repo. The trailing glob catches parallel-run variants.
 project-analytics.md
 usage-by-billing-period*.md
+
+# Per-session agent accounting — real cost figures from the private corpus,
+# kept on disk for the maintainer, never published. Moved here from the old
+# MCP repo in the KAN-126 merge; its history stays in that archived repo.
+ACCOUNTING.md
