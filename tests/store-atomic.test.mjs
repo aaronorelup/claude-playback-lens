@@ -254,19 +254,26 @@ describe('createIndexWriter', () => {
   });
 
   test('debounce: a burst of updates costs one write, the next waits the interval', async () => {
+    // Polls instead of fixed sleeps: an atomic write (temp file + rename) can
+    // take well over 60 ms on a loaded disk, and a fixed 60 ms wait then read
+    // "0 writes" (measured 2026-09-25 during a LoRA training run). The floor is
+    // 1 s so "held back" stays true however long the first write took.
+    const waitWrites = async (n) => {
+      const t0 = Date.now();
+      while (w.stats.writes < n && Date.now() - t0 < 5000) await sleep(10);
+      return w.stats.writes;
+    };
     const dir = await freshDir();
-    const w = createIndexWriter(dir, { minIntervalMs: 200 });
+    const w = createIndexWriter(dir, { minIntervalMs: 1000 });
 
     for (let i = 0; i < 6; i += 1) w.update({ id: `s${i}`, fingerprint: 'f' });
-    await sleep(60);
-    assert.equal(w.stats.writes, 1, 'six synchronous updates coalesced into one write');
+    assert.equal(await waitWrites(1), 1, 'six synchronous updates coalesced into one write');
 
     w.update({ id: 'later', fingerprint: 'f' });
-    await sleep(60);
-    assert.equal(w.stats.writes, 1, 'the second write is held back by the 200ms floor');
+    await sleep(100);
+    assert.equal(w.stats.writes, 1, 'the second write is held back by the 1 s floor');
 
-    await sleep(250);
-    assert.equal(w.stats.writes, 2, 'and lands once the floor has passed');
+    assert.equal(await waitWrites(2), 2, 'and lands once the floor has passed');
 
     await w.close();
     const idx = await loadIndex(dir);

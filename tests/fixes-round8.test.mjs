@@ -672,10 +672,19 @@ describe('R8-PROB-1 — the problems census is a current-state view, not a log',
     await idx.reindex();
     await waitUntil(() => strayRows().length === 1, 20000, 'the condition to come back');
     const w = idx._test.state.worker;
-    // let the writer's debounce flush the card to disk
+    // Let the writer's debounce flush the RE-PARSED card to disk. Waiting for
+    // "the card exists" was a race: the previous test's flush already left a
+    // copy WITHOUT the stray-file problem on disk, which satisfied the wait
+    // before the new write landed — under CPU load the assertions below then
+    // read that stale copy (measured 2026-09-25, ~1 full-suite run in 3). The
+    // writer was correct; the wait has to be for the state being asserted.
     await waitUntil(async () => {
-      try { const j = await store.loadIndex(cacheDir); return !!(j && j.cards && j.cards.get(SID)); } catch { return false; }
-    }, 20000, 'index.json to carry the card');
+      try {
+        const j = await store.loadIndex(cacheDir);
+        const c = j && j.cards && j.cards.get(SID);
+        return !!(c && Array.isArray(c.problems) && c.problems.some((p) => p.code === 'unclassified-file'));
+      } catch { return false; }
+    }, 20000, 'index.json to carry the re-parsed card with its restored problem');
     const persisted = await store.loadIndex(cacheDir);
     const card = persisted.cards.get(SID);
     assert.equal(Array.isArray(card.problems), true, 'the persisted card carries the session\'s problem list');
