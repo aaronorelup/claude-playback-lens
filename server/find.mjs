@@ -80,35 +80,107 @@ function makeMatcher({ q, re, caseSensitive }) {
   };
 }
 
-// candidate block texts with their dotted bi (SPEC §8 grammar)
-function* blockTexts(obj) {
+// ---- EVENT FILTERS (kinds / tool / time window / distinct).
+//
+// A playback lens is a search tool first: "every time I mentioned Nova" is a
+// search over the USER'S OWN PROMPTS, not over every tool result that happened
+// to print the word; "which session moved this file" is a search over TOOL
+// CALLS. So a match can be restricted to the kind of event it sits in:
+//
+//   prompt       text the user typed (type:user, not tool results, not
+//                harness-injected meta such as <system-reminder> or command
+//                caveats)
+//   assistant    the model's visible reply text
+//   thinking     the model's thinking text
+//   tool_use     a tool call's input (the Bash command, the Edit's path…)
+//   tool_result  what a tool returned
+//   meta         harness-injected user-role text
+//   other        anything else on the line (summaries, system records)
+//
+// With no filter set, runFind behaves exactly as before (line-level match,
+// block address resolved when possible).
+export const EVENT_KINDS = ['prompt', 'assistant', 'thinking', 'tool_use', 'tool_result', 'meta', 'other'];
+
+const META_PREFIX = /^\s*(<(system-reminder|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook|task-notification|bash-input|bash-stdout|bash-stderr)\b|Caveat: The messages below|\[Request interrupted)/;
+
+function userTextKind(obj, text) {
+  if (obj.isMeta === true || obj.isCompactSummary === true || META_PREFIX.test(text)) return 'meta';
+  return 'prompt';
+}
+
+// Every searchable block with its kind (and, for tool calls/results, the tool
+// name). toolNames maps tool_use id -> name for results in the same file.
+export function* classifiedBlocks(obj, toolNames) {
   const msg = obj && obj.message;
-  if (msg && Array.isArray(msg.content)) {
+  const type = obj && obj.type;
+  if (msg && typeof msg.content === 'string') {
+    const k = type === 'user' ? userTextKind(obj, msg.content) : type === 'assistant' ? 'assistant' : 'other';
+    yield { bi: null, kind: k, tool: null, text: msg.content };
+  } else if (msg && Array.isArray(msg.content)) {
     for (let i = 0; i < msg.content.length; i++) {
       const b = msg.content[i];
       if (!b || typeof b !== 'object') continue;
-      if (typeof b.text === 'string') yield { bi: `${i}`, text: b.text };
-      if (typeof b.thinking === 'string') yield { bi: `${i}`, text: b.thinking };
-      if (b.type === 'tool_use' && b.input !== undefined) yield { bi: `${i}`, text: JSON.stringify(b.input) };
-      if (b.type === 'tool_result') {
-        if (typeof b.content === 'string') yield { bi: `${i}`, text: b.content };
+      if (b.type === 'tool_use') {
+        if (b.id && b.name && toolNames) toolNames.set(b.id, b.name);
+        if (b.input !== undefined) yield { bi: `${i}`, kind: 'tool_use', tool: b.name ?? null, text: JSON.stringify(b.input) };
+      } else if (b.type === 'tool_result') {
+        const tool = (toolNames && toolNames.get(b.tool_use_id)) ?? null;
+        if (typeof b.content === 'string') yield { bi: `${i}`, kind: 'tool_result', tool, text: b.content };
         else if (Array.isArray(b.content)) {
           for (let j = 0; j < b.content.length; j++) {
             const sb = b.content[j];
-            if (sb && typeof sb.text === 'string') yield { bi: `${i}.${j}`, text: sb.text };
+            if (sb && typeof sb.text === 'string') yield { bi: `${i}.${j}`, kind: 'tool_result', tool, text: sb.text };
           }
         }
+      } else if (typeof b.thinking === 'string') {
+        yield { bi: `${i}`, kind: 'thinking', tool: null, text: b.thinking };
+      } else if (typeof b.text === 'string') {
+        const k = type === 'user' ? userTextKind(obj, b.text) : type === 'assistant' ? 'assistant' : 'other';
+        yield { bi: `${i}`, kind: k, tool: null, text: b.text };
       }
     }
   }
   const tur = obj && obj.toolUseResult;
-  if (tur !== undefined && tur !== null) {
-    if (typeof tur === 'string') yield { bi: 'r', text: tur };
-    else if (Array.isArray(tur)) {
-      for (let j = 0; j < tur.length; j++) yield { bi: `r.${j}`, text: JSON.stringify(tur[j]) };
-    } else yield { bi: 'r', text: JSON.stringify(tur) };
+  const hasResultBlock = !!(msg && Array.isArray(msg.content) && msg.content.some((b) => b && b.type === 'tool_result'));
+  if (tur !== undefined && tur !== null && !hasResultBlock) {
+    // toolUseResult duplicates the tool_result block's content when both are
+    // present; it is searched only when there is no block to carry the match.
+    const text = typeof tur === 'string' ? tur : JSON.stringify(tur);
+    yield { bi: 'r', kind: 'tool_result', tool: null, text };
   }
 }
+
+// Cheap tool-name harvest for lines that are NOT parsed (no text hit): keeps
+// tool_result -> tool attribution working without a JSON.parse per line.
+const TOOL_USE_RX = /"type":"tool_use","id":"([^"]+)","name":"([^"]+)"/g;
+function harvestToolNames(raw, toolNames) {
+  if (!toolNames || raw.indexOf('"tool_use"') === -1) return;
+  TOOL_USE_RX.lastIndex = 0;
+  let m;
+  while ((m = TOOL_USE_RX.exec(raw)) !== null) toolNames.set(m[1], m[2]);
+}
+
+// "Bash", "Bash,PowerShell", "mcp__*higgsfield*" -> case-insensitive whole-name RegExp.
+function toolMatcher(spec) {
+  if (!spec) return null;
+  const alts = String(spec).split(',').map((t) => t.trim()).filter(Boolean)
+    .map((t) => t.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*'));
+  return alts.length ? new RegExp(`^(?:${alts.join('|')})$`, 'i') : null;
+}
+
+function parseDay(v, endOfDay) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return v;
+  const s = String(v);
+  const ms = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z` : s);
+  if (!Number.isFinite(ms)) throw new Error(`unparseable date: ${s}`);
+  return ms;
+}
+
+// A substring the JSON encoder would escape (quote, backslash, control char)
+// never appears verbatim in the raw line, so the raw-line prefilter must not
+// veto it.
+const JSON_ESCAPED = /["\\\u0000-\u001f]/;
 
 // The disclosure has to name the RISK, not just the mechanism: the remainder
 // was never searched, so matches may exist there that this scan did not find
@@ -156,6 +228,17 @@ export async function runFind(opts) {
   const scope = opts.scope ?? { kind: 'store' };
   const tally = { regexTruncatedLines: 0 };
   const match1 = makeMatcher(opts);
+
+  // ---- event filters (see EVENT_KINDS). `filtered` switches matching from
+  // line-level to block-level so the kind/tool of every hit is known.
+  const kinds = Array.isArray(opts.kinds) && opts.kinds.length ? new Set(opts.kinds) : null;
+  const toolRx = toolMatcher(opts.tool);
+  const sinceMs = parseDay(opts.since, false);
+  const untilMs = parseDay(opts.until, true);
+  const filtered = !!(kinds || toolRx || opts.classify || sinceMs !== null || untilMs !== null);
+  const distinct = opts.distinct ? new Set() : null;
+  const ctxWidth = Math.max(40, Math.min(2000, opts.ctxWidth || 80));
+  const rawPrefilterOk = !!opts.re || !JSON_ESCAPED.test(String(opts.q ?? ''));
 
   // ---- scope narrowing
   let sessions = [...(opts.sessions ?? [])];
@@ -217,6 +300,13 @@ export async function runFind(opts) {
   for (const s of sessions) {
     if (signal?.aborted) return;
     const key = `${s.slug}/${s.id}`;
+    if (sinceMs !== null && mt(s) > 0 && mt(s) < sinceMs) {
+      // Every file of this session was last written before the window opens,
+      // so no line in it can carry a timestamp inside the window.
+      sessionsDone += 1;
+      bytesDone += orderedFiles(s).reduce((x, r) => x + (fileTable?.get(r)?.size ?? 0), 0);
+      continue;
+    }
     if (resuming && resume.k !== key) {
       // Sessions strictly newer than the cursor's recorded mtime snapshot
       // changed (or appeared) AFTER the capped scan — scan them rather than
@@ -236,6 +326,7 @@ export async function runFind(opts) {
       const startLine = fileResume ? resume.l : 0; // skip lines <= l when resuming
       if (fileResume) { fileResume = false; resuming = false; cursorResolved = true; }
       const abs = path.join(projectsDir, ...rel.split('/'));
+      const toolNames = filtered ? new Map() : null;
       try {
         for await (const L of readLines(abs)) {
           if (signal?.aborted) return;
@@ -261,7 +352,51 @@ export async function runFind(opts) {
           const oversized = !!opts.re && hay.length > REGEX_LINE_CAP;
           if (oversized) tally.regexTruncatedLines += 1;
           const hit = match1(hay);
-          // The line-level match stays PRIMARY: blockTexts() yields block
+          if (filtered) {
+            if (!hit && !oversized && rawPrefilterOk) { harvestToolNames(stripped, toolNames); continue; }
+            let obj = null;
+            try { obj = JSON.parse(stripped); } catch { continue; } // torn line: no blocks to classify
+            const atStr = typeof obj.timestamp === 'string' ? obj.timestamp : null;
+            if (sinceMs !== null || untilMs !== null) {
+              const atMs = atStr ? Date.parse(atStr) : NaN;
+              const outside = !Number.isFinite(atMs)
+                || (sinceMs !== null && atMs < sinceMs) || (untilMs !== null && atMs > untilMs);
+              if (outside) { harvestToolNames(stripped, toolNames); continue; }
+            }
+            for (const cand of classifiedBlocks(obj, toolNames)) {
+              if (kinds && !kinds.has(cand.kind)) continue;
+              if (toolRx && !(cand.tool && toolRx.test(cand.tool))) continue;
+              const t = cand.text.normalize('NFC');
+              const h = match1(t);
+              if (!h) continue;
+              if (distinct) {
+                const dk = obj.uuid ? `${obj.uuid}:${cand.bi}` : null;
+                if (dk && distinct.has(dk)) continue;
+                if (dk) distinct.add(dk);
+              }
+              matches += 1;
+              emit('match', {
+                slug: s.slug, id: s.id,
+                file: sessionRel(s, rel), line, bi: cand.bi,
+                at: atStr, kind: cand.kind, tool: cand.tool,
+                ctx: contextAround(t, h.index, h.length, ctxWidth),
+              });
+              if (matches >= cap) break;
+            }
+            if (matches >= cap) {
+              const skippedTotal = strips.base64Bytes + strips.signatureBytes;
+              emit('skip', { file: '*', reason: `${strips.base64} image payloads and ${strips.signature} signatures skipped`, bytes: skippedTotal });
+              if (tally.regexTruncatedLines > 0) emit('skip', truncationSkip(tally.regexTruncatedLines));
+              emit('done', {
+                matches, capped: true, cap,
+                cursor: toB64Url({ k: key, f: rel, l: line, m: mt(s) }),
+                skipped: { imagePayloads: strips.base64, signatures: strips.signature, bytes: skippedTotal },
+              });
+              return;
+            }
+            continue;
+          }
+          // The line-level match stays PRIMARY: classifiedBlocks() yields block
           // bodies only, so leading with it would silently stop matching every
           // metadata field the envelope carries — cwd, gitBranch, sessionId,
           // a tool's `name`. Those match today with bi:null and must keep
@@ -269,7 +404,7 @@ export async function runFind(opts) {
           // the line-level match cannot answer for.
           if (!hit && !oversized) continue; // an untruncated miss is a true miss
           // ctxText starts as `hay`, the same string `hit.index` indexes.
-          let bi = null, ctxText = hay, ctxHit = hit;
+          let bi = null, ctxText = hay, ctxHit = hit, kind = null, tool = null, found = false;
           let obj = null;
           try { obj = JSON.parse(stripped); } catch { /* torn line — still a line-level match */ }
           if (!hit) {
@@ -282,7 +417,7 @@ export async function runFind(opts) {
             // Re-run per block: each block is bounded by its own cap, and a
             // normal-sized one is nowhere near it.
             if (!obj) continue; // torn line — no blocks to rescue from
-            for (const cand of blockTexts(obj)) {
+            for (const cand of classifiedBlocks(obj, null)) {
               // Normalize the block ONCE and carry that same string into
               // ctxText — `h.index` is an offset into it, so handing
               // contextAround the un-normalized original would slide the window
@@ -290,15 +425,15 @@ export async function runFind(opts) {
               // that does not contain the match.
               const t = cand.text.normalize('NFC');
               const h = match1(t);
-              if (h) { bi = cand.bi; ctxText = t; ctxHit = h; break; }
+              if (h) { bi = cand.bi; kind = cand.kind; tool = cand.tool; ctxText = t; ctxHit = h; found = true; break; }
             }
-            if (bi === null) continue;
+            if (!found) continue;
           } else if (obj) {
             // resolve to a block address; line-only when outside any block
-            for (const cand of blockTexts(obj)) {
+            for (const cand of classifiedBlocks(obj, null)) {
               const t = cand.text.normalize('NFC');   // same-string rule as above
               const h = match1(t);
-              if (h) { bi = cand.bi; ctxText = t; ctxHit = h; break; }
+              if (h) { bi = cand.bi; kind = cand.kind; tool = cand.tool; ctxText = t; ctxHit = h; break; }
             }
           }
           matches += 1;
@@ -306,7 +441,8 @@ export async function runFind(opts) {
             slug: s.slug, id: s.id,
             file: sessionRel(s, rel), line, bi,
             at: obj && typeof obj.timestamp === 'string' ? obj.timestamp : null,
-            ctx: contextAround(ctxText, ctxHit.index, ctxHit.length),
+            kind, tool,
+            ctx: contextAround(ctxText, ctxHit.index, ctxHit.length, ctxWidth),
           });
           if (matches >= cap) {
             const skippedTotal = strips.base64Bytes + strips.signatureBytes;

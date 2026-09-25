@@ -49,6 +49,14 @@ Environment:
                         a writer directory of its own, so this process never
                         contends with the lens UI's cache writer at <repo root>/.cache.
   LENS_MCP_MAX_CHARS    hard cap on one tool result's rendered text (default 20000)
+  LENS_MCP_INPROCESS=1  hold the index in this process instead of the shared daemon
+  LENS_DAEMON_IDLE_MS   shared daemon exits after this long with no calls (default 900000)
+  LENS_STATE_DIR        daemon lock/info/log files (default ~/.claude/playback-lens/run)
+  LENS_PRICING_FILE     user rate file (default ~/.claude/playback-lens/pricing.json)
+
+Every Claude Code session starts its own copy of this server. Those copies are
+thin forwarders: ONE shared daemon per corpus holds the index and exits when
+idle, so N open sessions cost one index, not N.
 
 Registering it with Claude Code:
   claude mcp add --scope user lens -- node "<repo root>/mcp/lens-mcp.mjs"
@@ -107,74 +115,81 @@ try {
   process.exit(1);
 }
 
-// ---------------------------------------------------------------- 4. the lens
+// ---------------------------------------------------------------- 4. mode
 //
-// mcp/context.mjs statically imports the engine from ../lens.mjs and ../server,
-// builds the same ctx the lens's own main() builds, and hands back the module
-// bundle every tool reads. start() must complete before any tool is callable:
-// every index-backed route reads ctx.index, and an unstarted index answers 409
-// for everything.
-const { createContext, TOOLS_VERSION, lens } = await import('./context.mjs');
-const { createDispatcher } = await import('./dispatch.mjs');
-const render = await import('./render.mjs');
-
-log(`lens: ${REPO_ROOT} (in-package — engine and MCP server ship together)`);
-
-const ctx = await createContext();
-log(`corpus: ${ctx.projectsDir} (from ${ctx.projectsDirSource})`);
-log(`cache: ${ctx.cacheDir}`);
-
-log('starting index…');
-await ctx.index.start();
-const st = ctx.index.status();
-log(`index ${st.state}: ${st.sessionsDone} of ${st.sessionsTotal} sessions, ${st.bytesIndexed} of ${st.bytesTotal} bytes`);
-
-// ---------------------------------------------------------------- 5. serve
+// THREE shapes, one entry point:
 //
-// One dispatcher, shared by every tool: it owns the router and the memos that
-// carry R2 canonical resolution, so two tools called in one session see the
-// same de-duplication state the UI would.
-const call = createDispatcher(lens, ctx);
+//   --daemon              the shared process that holds the index
+//                         (mcp/daemon.mjs). Spawned by forwarders, never by
+//                         an MCP client.
+//   default (forwarder)   what every Claude Code session runs. Answers
+//                         tools/list from the schemas and forwards each call
+//                         to the daemon, spawning it when needed. One index
+//                         for all sessions instead of one per session.
+//   LENS_MCP_INPROCESS=1  the pre-daemon shape: this process builds and holds
+//                         its own index. Also the automatic fallback when the
+//                         daemon cannot be reached — availability beats memory.
+if (ARGV.includes('--daemon')) {
+  const { runDaemon } = await import('./daemon.mjs');
+  await runDaemon();
+} else {
+  const engineMod = await import('./engine.mjs');
+  const { TOOLS_VERSION, lens } = engineMod;
+  log(`lens: ${REPO_ROOT} (in-package — engine and MCP server ship together)`);
 
-// Every tool module exports register(server, deps) and is otherwise
-// self-contained, so one tool can be rewritten without touching another.
-const deps = {
-  ctx,     // the lens's ctx — what the API handlers read
-  lens,    // the imported lens module bundle
-  call,    // the dispatcher: call(method, pathname, query) -> { status, json }
-  render,  // mcp/render.mjs, whole namespace
-  // lensDir is the engine's own root, which in-package IS the repo root.
-  meta: { TOOLS_VERSION, lensDir: REPO_ROOT, mcpDir: MCP_DIR },
-};
+  const inProcess = process.env.LENS_MCP_INPROCESS === '1';
+  let engine = null;
+  let enginePromise = null;
+  const localEngine = () => {
+    if (!enginePromise) enginePromise = engineMod.createEngine({ log, mode: 'in-process' }).then((e) => (engine = e));
+    return enginePromise;
+  };
 
-const tools = await Promise.all([
-  import('./tools/status.mjs'),
-  import('./tools/sessions.mjs'),
-  import('./tools/usage.mjs'),
-  import('./tools/search.mjs'),
-  import('./tools/session.mjs'),
-]);
+  let forwarder = null;
+  if (inProcess) {
+    await localEngine();
+  } else {
+    const { createForwarder } = await import('./forwarder.mjs');
+    forwarder = createForwarder({ log });
+    log(`forwarding tool calls to the shared lens daemon (state: ${forwarder.paths.dir})`);
+  }
 
-// serveStdio takes a FACTORY, not a server instance. It calls the factory to
-// build the instance it pins to the connection, and it may build and discard
-// one while probing which protocol era the client speaks. So the factory
-// registers the tools fresh each time it runs. Registration is pure — the
-// expensive state (the index, the dispatcher's memos) is built once above and
-// captured by closure, so a second construction costs nothing.
-function buildServer() {
-  const server = new McpServer({
-    name: 'claude-playback-lens',
-    // The lens's own version. One version for the app; TOOLS_VERSION tracks
-    // this tool surface separately and is reported by lens_status.
-    version: lens.core.APP_VERSION,
-  }, { capabilities: { tools: {} } });
-  for (const tool of tools) tool.register(server, deps);
-  return server;
+  async function invoke(name, args) {
+    if (forwarder) {
+      try {
+        return await forwarder.invoke(name, args);
+      } catch (e) {
+        log(`daemon unreachable (${(e && e.message) || e}) — falling back to an in-process index for this session`);
+        forwarder = null;
+      }
+    }
+    await localEngine();
+    return engine.invoke(name, args);
+  }
+
+  // Schemas only: the handlers captured here are never called in forwarder
+  // mode; every call goes through invoke() above.
+  const tools = engineMod.collectTools(engineMod.schemaDeps());
+
+  // serveStdio takes a FACTORY, not a server instance. It calls the factory to
+  // build the instance it pins to the connection, and it may build and discard
+  // one while probing which protocol era the client speaks. So the factory
+  // registers the tools fresh each time it runs. Registration is pure.
+  function buildServer() {
+    const server = new McpServer({
+      name: 'claude-playback-lens',
+      // The lens's own version. One version for the app; TOOLS_VERSION tracks
+      // this tool surface separately and is reported by lens_status.
+      version: lens.core.APP_VERSION,
+    }, { capabilities: { tools: {} } });
+    for (const t of tools) server.registerTool(t.name, t.def, (args) => invoke(t.name, args));
+    return server;
+  }
+
+  log(`serving MCP over stdio — ${tools.length} tools (tools v${TOOLS_VERSION})`);
+  await serveStdio(buildServer, {
+    // Transport-level failures are otherwise swallowed. They go to stderr like
+    // everything else that is not JSON-RPC.
+    onerror: (e) => log(`transport error: ${(e && e.stack) || e}`),
+  });
 }
-
-log(`serving MCP over stdio — ${tools.length} tools (tools v${TOOLS_VERSION})`);
-await serveStdio(buildServer, {
-  // Transport-level failures are otherwise swallowed. They go to stderr like
-  // everything else that is not JSON-RPC.
-  onerror: (e) => log(`transport error: ${(e && e.stack) || e}`),
-});

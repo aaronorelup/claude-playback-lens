@@ -103,7 +103,10 @@ const mods = { pricing, ledger, jsonl, parse, scan, summary, config, store, lru 
 //   1 → 2 (2026-08-23): lens_usage's declared default `limit` fell 20 → 10. A
 //   declared default is part of the input schema an agent reads, so changing it
 //   is a surface change even though no argument stopped being accepted.
-export const TOOLS_VERSION = 2;
+//   2 → 3 (2026-09-24): lens_read and lens_pricing added; lens_search gained
+//   kinds / tool / since / until / distinct / context_chars and a kind:tool
+//   column; cost tools lead with a PRICING GAP banner while a model is unrated.
+export const TOOLS_VERSION = 3;
 
 /**
  * createContext() -> ctx

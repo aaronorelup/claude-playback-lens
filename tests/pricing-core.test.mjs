@@ -13,12 +13,13 @@ import {
   priceRow,
   formatUsd,
   assertRateTable,
+  setUserRates,
 } from '../shared/pricing.mjs';
 
 const AT = Date.parse('2026-08-01T00:00:00.000Z'); // inside the corpus window
 
 test('module constants (SPEC §6)', () => {
-  assert.equal(PRICING_VERSION, '2026-08-17');
+  assert.equal(PRICING_VERSION, '2026-09-24');
   assert.equal(TCU_PER_USD, 2e9);
   assert.equal(WEB_SEARCH_TCU, 2e7); // exactly 1 cent per request (R8)
 });
@@ -108,25 +109,58 @@ test('resolveRate — R9 fast tier: only the documented opus-5 / opus-4-8 pair, 
   assert.equal(resolveRate({ key: 'opus-5', speed: null, serviceTier: 'batch', atMs: AT }), null);
 });
 
-test('resolveRate — R10 intervals: sonnet-5 intro window boundary', () => {
-  const intro = resolveRate({ key: 'sonnet-5', speed: null, serviceTier: null, atMs: Date.parse('2026-08-31T23:59:59.999Z') });
-  assert.equal(intro.inputU, 4000); // $2 intro
-  assert.equal(intro.outputU, 20000); // $10 intro
-  assert.deepEqual(intro.interval, { from: null, to: '2026-08-31' });
-  const post = resolveRate({ key: 'sonnet-5', speed: null, serviceTier: null, atMs: Date.parse('2026-09-01T00:00:00.000Z') });
-  assert.equal(post.inputU, 6000); // $3
-  assert.equal(post.outputU, 30000); // $15
-  assert.deepEqual(post.interval, { from: '2026-09-01', to: null });
-  // earliest interval is open-ended backwards: history never falls into a hole
-  const ancient = resolveRate({ key: 'sonnet-5', speed: null, serviceTier: null, atMs: Date.parse('2020-01-01T00:00:00Z') });
-  assert.equal(ancient.inputU, 4000);
-  const future = resolveRate({ key: 'sonnet-5', speed: null, serviceTier: null, atMs: Date.parse('2030-01-01T00:00:00Z') });
-  assert.equal(future.inputU, 6000);
+// No shipped model has a price change on record any more (sonnet-5's
+// scheduled 2026-09-01 increase was cancelled), so the interval machinery is
+// exercised on a synthetic two-interval USER rate — the same code path a real
+// published price change takes.
+const TWO = { 'test-9': [
+  { from: null, to: '2026-08-31', inputU: 4000, outputU: 20000 },
+  { from: '2026-09-01', to: null, inputU: 6000, outputU: 30000 },
+] };
+
+test('resolveRate — R10 intervals: a price change resolves by day, both sides of the boundary', () => {
+  setUserRates(TWO);
+  try {
+    const before = resolveRate({ key: 'test-9', speed: null, serviceTier: null, atMs: Date.parse('2026-08-31T23:59:59.999Z') });
+    assert.equal(before.inputU, 4000);
+    assert.deepEqual(before.interval, { from: null, to: '2026-08-31' });
+    const after = resolveRate({ key: 'test-9', speed: null, serviceTier: null, atMs: Date.parse('2026-09-01T00:00:00.000Z') });
+    assert.equal(after.inputU, 6000);
+    assert.equal(after.outputU, 30000);
+    assert.deepEqual(after.interval, { from: '2026-09-01', to: null });
+    assert.equal(resolveRate({ key: 'test-9', speed: null, serviceTier: null, atMs: Date.parse('2020-01-01T00:00:00Z') }).inputU, 4000);
+    assert.equal(resolveRate({ key: 'test-9', speed: null, serviceTier: null, atMs: Date.parse('2030-01-01T00:00:00Z') }).inputU, 6000);
+  } finally { setUserRates({}); }
+});
+
+test('sonnet-5 is $2/$10 at every date (the 2026-09-01 increase was cancelled)', () => {
+  for (const d of ['2026-06-01', '2026-09-01', '2026-12-31']) {
+    const r = resolveRate({ key: 'sonnet-5', speed: null, serviceTier: null, atMs: Date.parse(`${d}T12:00:00Z`) });
+    assert.equal(r.inputU, 4000, d);
+    assert.equal(r.outputU, 20000, d);
+  }
+});
+
+test('fable-5-1 and opus-5-5 carry their published non-0.1x cache-read rates', () => {
+  const f = resolveRate({ key: 'fable-5-1', speed: null, serviceTier: null, atMs: AT });
+  assert.equal(f.inputU, 20000); assert.equal(f.outputU, 100000);
+  assert.equal(f.readU, 500);   // $0.25/Mtok = 0.025 x input
+  assert.equal(f.w5mU, 25000);  // $12.50
+  assert.equal(f.w1hU, 40000);  // $20
+  const o = resolveRate({ key: 'opus-5-5', speed: null, serviceTier: null, atMs: AT });
+  assert.equal(o.inputU, 8000); assert.equal(o.readU, 400); // $4, read $0.20
+  const of = resolveRate({ key: 'opus-5-5', speed: 'fast', serviceTier: null, atMs: AT });
+  assert.equal(of.inputU, 16000); assert.equal(of.outputU, 80000); assert.equal(of.readU, 800);
+  // everything else keeps the 0.1 x rule
+  assert.equal(resolveRate({ key: 'fable-5', speed: null, serviceTier: null, atMs: AT }).readU, 2000);
 });
 
 test('resolveRate — unknown `at` resolves only against a single all-time interval (never guesses)', () => {
   assert.ok(resolveRate({ key: 'opus-5', speed: null, serviceTier: null, atMs: null })); // one open interval
-  assert.equal(resolveRate({ key: 'sonnet-5', speed: null, serviceTier: null, atMs: null }), null); // two intervals: ambiguous
+  setUserRates(TWO);
+  try {
+    assert.equal(resolveRate({ key: 'test-9', speed: null, serviceTier: null, atMs: null }), null); // two intervals: ambiguous
+  } finally { setUserRates({}); }
 });
 
 test('R10 — every model interval list tiles all of time (no hole for any at)', () => {
@@ -212,5 +246,5 @@ test('formatUsd — SPEC §6 display rule (0 / <$0.0001 / four decimals)', () =>
 });
 
 test('LONG_CONTEXT_COVERED — exactly the SPEC §5 verified 1M-window set', () => {
-  assert.deepEqual([...LONG_CONTEXT_COVERED].sort(), ['fable-5', 'opus-4-8', 'opus-5', 'sonnet-5']);
+  assert.deepEqual([...LONG_CONTEXT_COVERED].sort(), ['fable-5', 'fable-5-1', 'mythos-5-1', 'opus-4-8', 'opus-5', 'opus-5-5', 'sonnet-5']);
 });

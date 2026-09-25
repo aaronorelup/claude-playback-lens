@@ -37,12 +37,16 @@ import { REPO_ROOT, lensFixtures } from './helpers.mjs';
 // and nothing else: a tool that appears without being registered here is a
 // surface an agent can call that nobody wrote a description for.
 const EXPECTED_TOOLS = [
+  'lens_pricing',
+  'lens_read',
   'lens_search',
   'lens_session',
   'lens_sessions',
   'lens_status',
   'lens_usage',
 ];
+// The one tool that writes — and what it writes is the user's rate file.
+const WRITERS = new Set(['lens_pricing']);
 
 // The protocol revision this server's SDK negotiates. Read from the SDK rather
 // than written down, so an SDK bump that changes it fails loudly here instead
@@ -84,6 +88,11 @@ before(async () => {
       // An index cache belongs to one process (SPEC §9). This child gets its
       // own so it never contends with the suite's other contexts.
       LENS_CACHE_DIR: cacheDir,
+      // The forwarder spawns a shared daemon; this run's daemon keeps its lock
+      // and info files in the scratch dir and exits soon after the suite.
+      LENS_STATE_DIR: path.join(cacheDir, 'run'),
+      LENS_DAEMON_IDLE_MS: '4000',
+      LENS_PRICING_FILE: path.join(cacheDir, 'pricing.json'),
     },
   });
 
@@ -185,7 +194,7 @@ test('tools/list names exactly the five lens_* tools', { timeout: BOOT_MS + 3000
     // server to ship structuredContent on every call — the exact token
     // doubling this server exists to prevent.
     assert.equal(t.outputSchema, undefined, `${t.name} must not declare an outputSchema`);
-    assert.equal(t.annotations?.readOnlyHint, true, `${t.name} must be marked read-only`);
+    assert.equal(t.annotations?.readOnlyHint, !WRITERS.has(t.name), `${t.name} read-only hint`);
   }
 });
 
@@ -200,6 +209,20 @@ test('a tools/call of lens_status returns a real, non-error result', { timeout: 
   assert.match(text, /^corpus: /m);
   // Text-only by default (§7.2).
   assert.equal(r.result.structuredContent, undefined);
+});
+
+// The memory fix: the stdio process is a forwarder, and the call above was
+// answered by ONE shared daemon whose info file names a live pid other than
+// the forwarder's own.
+test('tool calls are answered by the shared daemon, not by the stdio process', { timeout: 30000 }, async () => {
+  const runDir = path.join(cacheDir, 'run');
+  const files = await fsp.readdir(runDir);
+  const infoFile = files.find((f) => /^daemon-[0-9a-f]{12}\.json$/.test(f));
+  assert.ok(infoFile, `no daemon info file in ${runDir}: ${files.join(', ')}`);
+  const info = JSON.parse(await fsp.readFile(path.join(runDir, infoFile), 'utf8'));
+  assert.notEqual(info.pid, child.pid, 'the daemon is a separate process');
+  assert.ok(info.port > 0 && typeof info.token === 'string' && info.token.length >= 32);
+  process.kill(info.pid, 0); // throws if the daemon is not alive
 });
 
 // THE ACCEPTANCE CRITERION. It runs last so it judges every byte the child

@@ -12,8 +12,8 @@
     {
       "name": "playback-lens",
       "source": "./plugin",
-      "description": "Ask Claude about your own Claude Code usage. Bundles the Playback Lens MCP server (five read-only tools over ~/.claude/projects) plus a skill that teaches the model when to reach for it and how to read its results without inventing numbers.",
-      "version": "0.2.0",
+      "description": "Search and replay your own Claude Code history: every prompt, tool call and file operation, by event kind, tool and date — plus cost and token accounting that flags and repairs unpriced models. Bundles the Playback Lens MCP server and a skill that teaches the model when to reach for it.",
+      "version": "0.3.0",
       "author": {
         "name": "Aaron Orelup"
       },

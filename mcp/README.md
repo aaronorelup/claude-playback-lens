@@ -24,8 +24,8 @@ the [stdout rule](#stdout-is-the-wire), and the [output discipline](#output-disc
 Less than the acronym suggests. An MCP server over stdio is:
 
 - **A process the client spawns.** Claude Code launches `node mcp/lens-mcp.mjs` as a child process
-  and talks to it over that child's stdin and stdout. There is no port, no URL, no daemon. When
-  the client exits, the server exits.
+  and talks to it over that child's stdin and stdout. When the client exits, the server exits.
+  (This one adds a twist — see [One index, many sessions](#one-index-many-sessions).)
 - **Speaking JSON-RPC 2.0, newline-delimited.** One JSON object per line on stdout, one per line
   on stdin. That is the entire wire format.
 - **Answering four things.** `initialize` (handshake and protocol-version negotiation),
@@ -39,6 +39,17 @@ Less than the acronym suggests. An MCP server over stdio is:
 `@modelcontextprotocol/server` handles the framing, the negotiation and the schema derivation.
 The parts you actually own are the tool descriptions, the argument schemas, and what the text
 says — which is the whole job, and the reason the rest of this README is about rendering.
+
+## One index, many sessions
+
+Claude Code starts one MCP server **per session**. When each of those held its own index, a
+machine with eighteen open sessions carried eighteen copies — 11 GB, measured. So the stdio
+process is a **forwarder**: it answers `tools/list` from the tool schemas alone and forwards
+each `tools/call` over loopback HTTP to one shared **daemon** (`mcp/daemon.mjs`), spawning it
+when none is running. The daemon is a singleton per corpus (an exclusive lock file decides the
+race), accepts only calls carrying the random token from its user-only info file, and exits
+after `LENS_DAEMON_IDLE_MS` (15 min) with no calls. If the daemon cannot be reached the
+forwarder falls back to holding an index itself (`LENS_MCP_INPROCESS=1` forces that shape).
 
 ## How this one works
 

@@ -103,8 +103,8 @@ export async function waitReady(ctx, timeoutMs = 30000) {
 // NAMED only alongside an explicit statement that it is unavailable; and the
 // locator that made the dead hint worth printing must survive as data.
 
-export const PHASE1_TOOLS = ['lens_status', 'lens_sessions', 'lens_usage', 'lens_search', 'lens_session'];
-export const UNBUILT_TOOLS = ['lens_read', 'lens_rows', 'lens_workflow'];
+export const PHASE1_TOOLS = ['lens_status', 'lens_sessions', 'lens_usage', 'lens_search', 'lens_session', 'lens_read', 'lens_pricing'];
+export const UNBUILT_TOOLS = ['lens_rows', 'lens_workflow'];
 
 /** Every `name arg=` shape in the text — i.e. everything rendered as a call. */
 export const literalCalls = (text) => [...new Set(text.match(/\blens_[a-z_]+(?=\s+[a-z_]+=)/g) || [])];

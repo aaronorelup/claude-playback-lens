@@ -9,11 +9,21 @@
 //   one web-search request adds exactly 2e7 tcu (= 1 cent, R8).
 //
 // Sticker rates: https://platform.claude.com/docs/en/about-claude/pricing
-// (retrieved 2026-08-17), cross-checked against the Anthropic model reference
-// (sonnet-5 $2/$10 is an intro price through 2026-08-31; $3/$15 after).
-// Not editable in the UI — editing is a code change, versioned below.
+// (retrieved 2026-09-24). sonnet-5's $2/$10 launch price is now its standard
+// price — the increase to $3/$15 scheduled for 2026-09-01 was cancelled.
+//
+// CACHE READS are 0.1 x input for most models, but NOT all: fable-5-1 /
+// mythos-5-1 read at 0.025 x ($0.25/Mtok) and opus-5-5 at 0.05 x ($0.20/Mtok).
+// An interval may therefore carry an explicit `readU`; without one the read
+// rate is inputU / 10 (R5).
+// The SHIPPED table is a code change, versioned below. A model released after
+// PRICING_VERSION is covered by USER_RATES (see below): rates the operator —
+// or an agent acting for them, citing the published page — adds at runtime
+// without a release. Without that, a brand-new model's spend falls entirely to
+// the unpriced channel, and a report that reads only the dollar column omits
+// what may be most of the bill.
 
-export const PRICING_VERSION = '2026-08-17';
+export const PRICING_VERSION = '2026-09-24';
 export const TCU_PER_USD = 2e9;
 export const WEB_SEARCH_TCU = 2e7; // $10 / 1,000 requests = exactly 1 cent/request (R8); web_fetch is free
 
@@ -23,6 +33,12 @@ export const WEB_SEARCH_TCU = 2e7; // $10 / 1,000 requests = exactly 1 cent/requ
 // model is open-ended backwards so history never falls into a hole; the latest
 // is open-ended forwards. Key = modelKey, or `${modelKey}@fast` for R9 tier rows.
 export const RATES = {
+  // $10 / $50, cache read $0.25 (0.025 x)
+  'fable-5-1':  [{ from: null, to: null, inputU: 20000, outputU: 100000, readU: 500 }],
+  'mythos-5-1': [{ from: null, to: null, inputU: 20000, outputU: 100000, readU: 500 }],
+  // $4 / $20, cache read $0.20 (0.05 x); fast tier $8 / $40, read 0.05 x = $0.40
+  'opus-5-5':      [{ from: null, to: null, inputU: 8000, outputU: 40000, readU: 400 }],
+  'opus-5-5@fast': [{ from: null, to: null, inputU: 16000, outputU: 80000, readU: 800 }],
   // $10 / $50
   'fable-5':  [{ from: null, to: null, inputU: 20000, outputU: 100000 }],
   'mythos-5': [{ from: null, to: null, inputU: 20000, outputU: 100000 }],
@@ -38,12 +54,9 @@ export const RATES = {
   // legacy $15 / $75
   'opus-4-1': [{ from: null, to: null, inputU: 30000, outputU: 150000 }],
   'opus-4':   [{ from: null, to: null, inputU: 30000, outputU: 150000 }],
-  // sonnet-5: $2/$10 intro interval (open-ended backwards) through 2026-08-31,
-  // then $3/$15 from 2026-09-01 (open-ended forwards).
-  'sonnet-5': [
-    { from: null, to: '2026-08-31', inputU: 4000, outputU: 20000 },
-    { from: '2026-09-01', to: null, inputU: 6000, outputU: 30000 },
-  ],
+  // sonnet-5: $2 / $10 (the launch price became the standard price; the
+  // scheduled 2026-09-01 increase did not happen)
+  'sonnet-5': [{ from: null, to: null, inputU: 4000, outputU: 20000 }],
   // $3 / $15
   'sonnet-4-6': [{ from: null, to: null, inputU: 6000, outputU: 30000 }],
   'sonnet-4-5': [{ from: null, to: null, inputU: 6000, outputU: 30000 }],
@@ -59,11 +72,54 @@ export const RATES = {
   // claude-3-5-sonnet-* (sonnet-3-5) have NO rows and fall to the unpriced channel.
 };
 
+// USER RATES. Same shape as RATES (interval lists in rate units), plus two
+// provenance fields per interval — `source` (the URL the rate was read from)
+// and `retrieved` (YYYY-MM-DD). Filled at runtime by setUserRates(); the Node
+// side loads it from a JSON file (server/user-pricing.mjs), the browser never
+// sees it (the browser only formats money the server already priced). A key
+// here WINS over the same key in RATES, so a published price change can be
+// applied without waiting for a release; every user-sourced rate is disclosed
+// (rateSource) so a reader can tell a shipped rate from an added one.
+export const USER_RATES = {};
+
+/** 'user' | 'shipped' | null — which table prices this lookup key. */
+export function rateSource(key) {
+  if (key != null && Object.prototype.hasOwnProperty.call(USER_RATES, key)) return 'user';
+  if (key != null && Object.prototype.hasOwnProperty.call(RATES, key)) return 'shipped';
+  return null;
+}
+
+/** Does ANY table carry a rate list for this raw model id (standard tier)? */
+export function hasRate(rawModel) {
+  return rateSource(modelKey(rawModel)) !== null;
+}
+
+/**
+ * setUserRates(map) — replace USER_RATES wholesale. `map` is
+ * { [modelKey]: [{ from, to, inputU, outputU, source?, retrieved? }] }.
+ * Every list is validated with the SAME rules as the shipped table (integral
+ * effective rates, gap-free tiling) BEFORE anything is replaced, so a bad file
+ * can never leave a half-applied table. Throws with the offending key named.
+ */
+export function setUserRates(map) {
+  const next = {};
+  for (const [key, list] of Object.entries(map || {})) {
+    if (typeof key !== 'string' || key === '' || key !== modelKey(key)) {
+      throw new Error(`pricing: user rate key "${key}" is not a normalised model key (expected e.g. "${modelKey(String(key))}")`);
+    }
+    assertRateList(key, list);
+    next[key] = list.map((iv) => ({ ...iv }));
+  }
+  for (const k of Object.keys(USER_RATES)) delete USER_RATES[k];
+  Object.assign(USER_RATES, next);
+  return Object.keys(next).length;
+}
+
 // SPEC §5 "Long context": models VERIFIED to have published pricing covering the
 // full 1M-token window at standard rates — no long-context premium applies to them.
 // A billed row on any model OUTSIDE this set whose measured input-side total
 // exceeds 200,000 tokens is priced at standard rates and counted premiumUnknown.
-export const LONG_CONTEXT_COVERED = ['fable-5', 'opus-5', 'sonnet-5', 'opus-4-8'];
+export const LONG_CONTEXT_COVERED = ['fable-5-1', 'mythos-5-1', 'fable-5', 'opus-5-5', 'opus-5', 'sonnet-5', 'opus-4-8'];
 
 // modelKey(raw) — SPEC §6 normalisation:
 // strip `claude-` prefix, `[1m]` suffix, `-YYYYMMDD` date suffix; then reorder
@@ -119,7 +175,7 @@ export function resolveRate({ key, speed, serviceTier, atMs }) {
   } else {
     return null; // non-standard service_tier (e.g. batch): no shipped rate (SPEC R9: do NOT pre-ship)
   }
-  const list = RATES[lookupKey];
+  const list = USER_RATES[lookupKey] ?? RATES[lookupKey];
   if (!list) return null;
   const iv = intervalFor(list, atMs);
   if (!iv) return null;
@@ -128,9 +184,10 @@ export function resolveRate({ key, speed, serviceTier, atMs }) {
     outputU: iv.outputU,
     w5mU: (iv.inputU * 5) / 4, // R5: 5-minute cache write = 1.25 x input
     w1hU: iv.inputU * 2,       // R5: 1-hour cache write   = 2    x input
-    readU: iv.inputU / 10,     // R5: cache read            = 0.1  x input
+    readU: iv.readU ?? iv.inputU / 10, // R5: cache read = 0.1 x input, unless the model publishes its own
     interval: { from: iv.from, to: iv.to },
     tier,
+    source: USER_RATES[lookupKey] ? 'user' : 'shipped',
   };
 }
 
@@ -192,43 +249,47 @@ export function formatUsd(tcu) {
 // hole or overlap. A future rate that breaks this fails loudly at import,
 // not silently at runtime.
 export function assertRateTable() {
+  for (const [key, list] of Object.entries(RATES)) assertRateList(key, list);
+  return true;
+}
+
+// assertRateList — the per-model half of assertRateTable, shared with
+// setUserRates so an added rate meets exactly the shipped table's bar.
+export function assertRateList(key, list) {
   const DAY_MS = 86400000;
-  for (const [key, list] of Object.entries(RATES)) {
-    if (!Array.isArray(list) || list.length === 0) {
-      throw new Error(`pricing: ${key} has no intervals`);
+  if (!Array.isArray(list) || list.length === 0) {
+    throw new Error(`pricing: ${key} has no intervals`);
+  }
+  for (let i = 0; i < list.length; i++) {
+    const iv = list[i];
+    const effective = {
+      'input x1': iv.inputU,
+      'input x1.25 (5m write)': (iv.inputU * 5) / 4,
+      'input x2 (1h write)': iv.inputU * 2,
+      'cache read': iv.readU ?? iv.inputU / 10,
+      'output x1': iv.outputU,
+    };
+    for (const [name, v] of Object.entries(effective)) {
+      if (!Number.isSafeInteger(v) || v <= 0) {
+        throw new Error(`pricing: non-integral effective rate — ${key}[${i}] ${name} = ${v}`);
+      }
     }
-    for (let i = 0; i < list.length; i++) {
-      const iv = list[i];
-      const effective = {
-        'input x1': iv.inputU,
-        'input x1.25 (5m write)': (iv.inputU * 5) / 4,
-        'input x2 (1h write)': iv.inputU * 2,
-        'input x0.1 (read)': iv.inputU / 10,
-        'output x1': iv.outputU,
-      };
-      for (const [name, v] of Object.entries(effective)) {
-        if (!Number.isSafeInteger(v) || v <= 0) {
-          throw new Error(`pricing: non-integral effective rate — ${key}[${i}] ${name} = ${v}`);
-        }
-      }
-      if (i === 0 && iv.from !== null) {
-        throw new Error(`pricing: ${key} earliest interval must be open-ended backwards (effectiveFrom null)`);
-      }
-      if (i === list.length - 1 && iv.to !== null) {
-        throw new Error(`pricing: ${key} latest interval must be open-ended forwards (effectiveTo null)`);
-      }
-      if (i > 0) {
-        const prev = list[i - 1];
-        if (prev.to === null) throw new Error(`pricing: ${key}[${i - 1}] open-ended interval is not last`);
-        if (iv.from === null) throw new Error(`pricing: ${key}[${i}] open-ended-backwards interval is not first`);
-        const dayAfterPrev = new Date(Date.parse(`${prev.to}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10);
-        if (iv.from !== dayAfterPrev) {
-          throw new Error(`pricing: ${key} interval hole/overlap between ${prev.to} and ${iv.from}`);
-        }
+    if (i === 0 && iv.from !== null) {
+      throw new Error(`pricing: ${key} earliest interval must be open-ended backwards (effectiveFrom null)`);
+    }
+    if (i === list.length - 1 && iv.to !== null) {
+      throw new Error(`pricing: ${key} latest interval must be open-ended forwards (effectiveTo null)`);
+    }
+    if (i > 0) {
+      const prev = list[i - 1];
+      if (prev.to === null) throw new Error(`pricing: ${key}[${i - 1}] open-ended interval is not last`);
+      if (iv.from === null) throw new Error(`pricing: ${key}[${i}] open-ended-backwards interval is not first`);
+      const dayAfterPrev = new Date(Date.parse(`${prev.to}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10);
+      if (iv.from !== dayAfterPrev) {
+        throw new Error(`pricing: ${key} interval hole/overlap between ${prev.to} and ${iv.from}`);
       }
     }
   }
-  return true;
 }
 
 assertRateTable(); // runs at module load, in Node and in the browser alike

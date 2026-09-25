@@ -430,8 +430,8 @@ test('a capped scan hands back the cursor as a literal resume call', async () =>
 // survive; only the dead call is removed. usage.mjs already models the honest
 // shape for an unbuilt tool: name it AND say it is phase 2.
 
-const UNBUILT_TOOLS = ['lens_read', 'lens_rows', 'lens_workflow'];
-const PHASE1_TOOLS = ['lens_status', 'lens_sessions', 'lens_usage', 'lens_search', 'lens_session'];
+const UNBUILT_TOOLS = ['lens_rows', 'lens_workflow'];
+const PHASE1_TOOLS = ['lens_status', 'lens_sessions', 'lens_usage', 'lens_search', 'lens_session', 'lens_read', 'lens_pricing'];
 
 /** Every `name arg=` shape in the text — i.e. everything rendered as a call. */
 const literalCalls = (text) => [...new Set(text.match(/\blens_[a-z_]+(?=\s+[a-z_]+=)/g) || [])];
@@ -466,13 +466,13 @@ test('the locator survives the hint rewrite — slug, id, file and line, all fou
   assert.match(line, /line=\d+$/, line);
 });
 
-test('a phase-2 reader may be NAMED only alongside the fact that it is unavailable', async () => {
+test('the lens_read hint carries the whole locator of match 1', async () => {
+  const { SLUG, S1 } = H.fixtures;
   const t = textOf(await tool.invoke({ q: 'NEEDLE_ALPHA' }));
-  if (!t.includes('lens_read')) return; // naming it at all is optional
-  assert.match(t, /lens_read — ships in phase 2 and is not callable yet/,
-    'a bare mention reads as an instruction to call it');
-  // …and the honest note says what CAN read the locator today.
-  assert.match(t, /file\+line under the corpus dir/);
+  const line = t.split('\n').find((l) => l.trimStart().startsWith('lens_read '));
+  assert.ok(line, `no lens_read hint in:\n${t}`);
+  assert.ok(line.includes(`slug=${JSON.stringify(SLUG)}`) && line.includes(`id=${JSON.stringify(S1)}`), line);
+  assert.match(line, /file="[^"]+\.jsonl" line=\d+/, line);
 });
 
 test('the tool description does not promise an unbuilt tool either', async () => {

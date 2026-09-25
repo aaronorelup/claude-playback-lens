@@ -1,19 +1,19 @@
 # playback-lens (Claude Code plugin)
 
-Ask Claude about your own Claude Code usage — what a project cost this week,
-which model you are spending on, which session did that thing, what a past
-session actually did — instead of writing a throwaway parse script over a
-gigabyte of JSONL in `~/.claude/projects`.
+Search and replay your own Claude Code history — every time you mentioned
+something, every command a session ran, which session moved a file — and ask
+what it cost, instead of grepping gigabytes of JSONL in `~/.claude/projects`.
 
 The plugin bundles two things:
 
-- **the `lens` MCP server** — five read-only tools (`lens_status`,
-  `lens_sessions`, `lens_usage`, `lens_search`, `lens_session`) over your local
-  transcript store. Every figure is a recorded fact or arithmetic over recorded
-  facts; an unknown value renders `—`, never `0`.
-- **the `/playback-lens:usage` skill** — the knowledge the tool descriptions
-  cannot carry: when to reach for the tools, how to read a result without
-  inventing numbers, and the gotchas (scope grammar, date-band refusals).
+- **the `lens` MCP server** — `lens_search` (timeline search by event kind,
+  tool and date), `lens_read` (open a hit), `lens_sessions`, `lens_session`,
+  `lens_usage`, `lens_status`, and `lens_pricing` (see and repair the rate
+  table for newly released models). Every figure is a recorded fact or
+  arithmetic over recorded facts; an unknown value renders `—`, never `0`.
+- **the `/playback-lens:usage` skill** — the search recipes ("every time I
+  mentioned X", "which session moved this file"), the pricing-gap repair
+  procedure, and how to read a result without inventing numbers.
 
 ## Install
 
@@ -28,7 +28,10 @@ The plugin bundles two things:
 which fetches the npm package on first run — plugin installs never run
 `npm install`, so nothing is vendored here.
 
-Nothing writes to your corpus, and nothing leaves your machine.
+Nothing writes to your corpus, and nothing leaves your machine. The only file
+the plugin writes is your own rate file, `~/.claude/playback-lens/pricing.json`.
+One shared background process holds the index for all sessions and exits after
+15 idle minutes.
 
 ## More
 

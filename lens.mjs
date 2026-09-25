@@ -921,6 +921,14 @@ async function main() {
   const missing = Object.entries(mods).filter(([, m]) => !m).map(([k]) => k);
   if (missing.length) console.log(`[lens] waiting on parallel-build modules: ${missing.join(', ')} (degraded until they land)`);
 
+  // The user's own rate file (models released after the shipped table) — the
+  // same file lens_pricing writes. Read at startup; restart to pick up edits.
+  const userPricingMod = mods.pricing ? await tryImport('server/user-pricing.mjs') : null;
+  if (userPricingMod) {
+    const st = userPricingMod.createUserPricing(mods.pricing).state();
+    console.log(`[lens] user rates: ${st.models.length} model(s) from ${st.file}${st.problem ? ` — PROBLEM: ${st.problem}` : ''}`);
+  }
+
   const { dir: projectsDir, source } = await resolveProjects(mods);
   console.log(`[lens] projects dir: ${projectsDir}  (from ${source})`);
   try {

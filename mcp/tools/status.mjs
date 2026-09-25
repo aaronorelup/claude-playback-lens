@@ -7,6 +7,7 @@
 // per-session or per-project arrays, which are what make that payload large.
 
 import { z } from 'zod';
+import { unratedModels, gapLine } from '../pricing-gap.mjs';
 
 // How many folded problem rows this tool enumerates — in the rendered text AND
 // in `structuredContent`. The index serves up to PROBLEMS_CAP (200) rows, each
@@ -91,7 +92,14 @@ export function register(server, deps) {
         problems: problemRows(view.problems),
         problemsTotal: Array.isArray(view.problems) ? view.problems.length : 0,
       };
-      return render.structuredWrap(render.textResult(render.capText(text)), json, structured);
+      const gap = gapLine(unratedModels(ctx, lens.pricing));
+      // Just above the footer, which stays the last line.
+      let out = text;
+      if (gap) {
+        const i = text.lastIndexOf('\n');
+        out = i < 0 ? `${gap}\n${text}` : `${text.slice(0, i)}\n${gap}${text.slice(i)}`;
+      }
+      return render.structuredWrap(render.textResult(render.capText(out)), json, structured);
     },
   );
 }

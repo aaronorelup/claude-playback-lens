@@ -37,6 +37,7 @@
 //    the total renders `—` too, because a share of an unknown is unknown.
 
 import { z } from 'zod';
+import { unratedModels, gapBanner } from '../pricing-gap.mjs';
 
 // The shared helpers this file needs at module scope (the rest arrive through
 // deps.render, which is the same module). TOKEN_KEYS is the ledger's Tokens
@@ -177,7 +178,10 @@ async function runUsage(deps, args) {
   }
   if (built.pending) return render.structuredWrap(render.pendingResult(built.pending), built.pending, args.structured);
 
-  const text = renderUsage(deps, {
+  const banner = gapBanner(unratedModels(deps.ctx, lens.pricing));
+  const text = (banner ? `${banner}
+
+` : '') + renderUsage(deps, {
     scope, scopeRaw: lens.api.scopeString(scope), view, agg, groupBy,
     since, until, sinceMs, untilMs, dated,
     sort: args.sort ?? 'usd', limit: args.limit ?? DEFAULT_LIMIT, detail: !!args.detail,

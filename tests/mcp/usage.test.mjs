@@ -100,7 +100,7 @@ test('store scope defaults to group_by=project and totals the fixture exactly', 
   const t = textOf(r);
 
   assert.match(t, /^USAGE — store · group_by=project · sort=usd$/m);
-  assert.match(t, /^basis: 2 of 2 sessions indexed · .* · pricing v2026-08-17 · index v5$/m);
+  assert.match(t, /^basis: 2 of 2 sessions indexed · .* · pricing v2026-09-24 · index v5$/m);
   // The one project, its share, and the TOTAL row.
   assert.match(t, new RegExp(`^${SLUG}\\s+9\\s+\\S+\\s+\\$0\\.0776\\s+100\\.0%$`, 'm'));
   assert.match(t, /^TOTAL\s+9\s+\S+\s+\$0\.0776\s+100\.0%$/m);
@@ -192,7 +192,10 @@ test('a 125-char project slug does not blow the budget, and stays addressable', 
   const t2 = await longSlugTool();
   const r = await t2.handler(t2.config.inputSchema.parse({ structured: true }));
   assert.ok(!r.isError, textOf(r));
-  const t = textOf(r);
+  // The PRICING GAP banner (the fixture records a deliberately unrated model)
+  // is a deliberate, bounded prefix — it is excluded from the layout budget
+  // this test guards, which is about slug padding.
+  const t = textOf(r).replace(/^⚠ PRICING GAP[\s\S]*?\n\n/, '');
 
   // 1. The budget. ~4 chars/token against the recalibrated ~525-token ceiling.
   //    MEASURED, not aspirational: this render is 1067 chars (~267 tok) today,

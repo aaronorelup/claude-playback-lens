@@ -1,15 +1,15 @@
 # Claude Playback Lens
 
-An MCP server that answers questions about your own Claude Code usage from Claude Code's
-own recorded transcripts. It reads `~/.claude/projects` off your disk — no account, no
-upload, no telemetry — and gives an agent the answers people currently get by writing a
-throwaway parse script over a gigabyte of JSONL:
+An MCP server that lets an agent **search and replay your own Claude Code history** — every
+prompt you typed, every tool call, every file it wrote or moved — straight from Claude Code's
+recorded transcripts. It reads `~/.claude/projects` off your disk (no account, no upload, no
+telemetry) and answers what people currently answer by grepping gigabytes of JSONL:
 
-- *What did project X cost this week?*
-- *Which model am I actually spending on?*
-- *Which session was the one where I rewrote the importer?*
-- *What did that session actually do — how many turns, how many subagents, where did the tokens go?*
-- *What share of my usage was cache reads?*
+- *Find every time I mentioned Nova* — your own prompts only, not tool output.
+- *Find every video I generated through higgsfield* — the exact commands, and where the files went.
+- *Which session moved this file?* — the tool call that did it, with its timestamp.
+- *What did that session actually do — turns, subagents, where the tokens went?*
+- *What did project X cost this week, and which model am I spending on?*
 
 ```
 you  › what has acme-dashboard cost, by model?
@@ -49,8 +49,14 @@ four things you can check:
 
 One thing the rule cannot fix: **cost is an estimate, not a bill.** It is your recorded token
 counts times published list rates. It cannot see negotiated pricing, batch discounts, or a
-subscription plan. The rate table is read-only by design — changing it is a code change, not
-a hidden preference — and its version, retrieval date and source are reported by `lens_status`.
+subscription plan. The shipped rate table is versioned in code and reported by `lens_status`.
+
+**New models.** A model released after the shipped table has no rate; its spend is kept out
+of every dollar figure (never $0) and every cost answer leads with a `⚠ PRICING GAP` banner
+naming it. `lens_pricing` repairs that without a release: the agent reads the published price,
+cites the page, and the rate lands in `~/.claude/playback-lens/pricing.json`, in effect for
+every session at once. Models whose cache reads are not 10% of input (Fable 5.1, Opus 5.5)
+carry their own cache-read rate.
 
 ## Install
 
@@ -58,8 +64,17 @@ a hidden preference — and its version, retrieval date and source are reported 
 claude mcp add --scope user lens -- npx -y claude-playback-lens-mcp
 ```
 
-That is the whole setup. A Claude Code plugin is in the works; until then, the `npx` form
-above is the supported install.
+That is the whole setup. Or install the Claude Code plugin, which bundles the server with a
+skill that teaches the model the search recipes:
+
+```
+/plugin marketplace add aaronorelup/claude-playback-lens
+/plugin install playback-lens@claude-playback-lens
+```
+
+**Memory.** Claude Code starts one MCP server per session. Each of those is a thin forwarder
+(~70 MB); a single shared daemon per corpus holds the index and exits after 15 idle minutes.
+Ten open sessions cost one index, not ten.
 
 If you have cloned the repo (you want the viewer, or you want to change something), point at
 the checkout instead — no publish step, edits take effect on the next client restart:
@@ -76,18 +91,21 @@ its own runs on Node ≥ 18 and needs no install at all.
 `lens_status` always reports which corpus root won, so there is never doubt about where a
 number came from.
 
-## The five tools
+## The tools
 
 | Tool | What it answers | Ask it something like |
 |---|---|---|
+| `lens_search` | Every hit across every transcript, with timestamp, session, **event kind** (prompt / assistant / thinking / tool_use / tool_result) and tool name. Filter by kind, tool (`"Bash,PowerShell"`, `"mcp__*higgsfield*"`) and date; copies in resumed sessions are collapsed. Resumable by cursor. | *"Every time I mentioned Nova"* → `kinds:["prompt"]`. *"Which session moved report.pdf?"* → `kinds:["tool_use"]`. |
+| `lens_read` | Opens a hit: the full prompt, the exact tool call, what the tool returned, and the events after it. | *"Show me that higgsfield command and its output."* |
+| `lens_pricing` | Which recorded models have no rate, the rates you added and their sources; adds or removes a rate. The one tool that writes — only to your own rate file. | *"Price Fable 5.1 from the pricing page."* |
 | `lens_status` | Corpus contents, index readiness, store totals, and the pricing/index versions a figure was computed under. | *"Is the lens index ready, and how much is in my corpus?"* |
 | `lens_sessions` | Sessions with their locators, timings, turn/agent counts and cost — filtered by project, date, cwd, branch, title or cost. The addressing layer the other tools need. | *"Find the session from last Tuesday on the `refactor/parser` branch."* |
 | `lens_usage` | Tokens and dollars grouped by project, session, model, day or agent, over any scope and date range. | *"Which projects burned the most this week, and what share was cache reads?"* |
-| `lens_search` | Substring or regex across every transcript, returning match **locators** with a line of context — not whole files. Resumable by cursor. | *"Where did I ever discuss the retry backoff?"* |
 | `lens_session` | One session's structure: turns with the prompt that opened each, subagents, workflow runs, cost, recorded problems. | *"What did that session actually do?"* |
 
-Every tool is read-only — annotated as such, and enforced at the surface: no tool maps to a
-route that writes to the corpus, mutates config, or triggers a reindex.
+Every tool but `lens_pricing` is read-only — annotated as such, and enforced at the surface: no
+tool maps to a route that writes to the corpus, mutates config, or triggers a reindex.
+`lens_pricing` writes only your rate file, and refuses a rate without a source URL.
 
 ## Token-budget discipline
 

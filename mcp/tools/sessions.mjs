@@ -42,6 +42,7 @@
 //   `lens_session` ships a session's own problems[].
 
 import { z } from 'zod';
+import { unratedModels, gapBanner } from '../pricing-gap.mjs';
 
 // The shared helpers this file needs at module scope. The rest arrive through
 // the `render` namespace on deps, which is the same module.
@@ -172,8 +173,11 @@ export function register(server, deps) {
         // as 'resolved' and made the pending footer below unreachable.
         r2: byProject ? (view.r2 ?? null) : ((view.status && view.status.r2) ?? null),
       };
+      const banner = gapBanner(unratedModels(ctx, deps.lens.pricing));
       return render.structuredWrap(
-        render.textResult(render.capText(text, { narrow: 'limit' })),
+        render.textResult(render.capText(banner ? `${banner}
+
+${text}` : text, { narrow: 'limit' })),
         json,
         structured,
       );

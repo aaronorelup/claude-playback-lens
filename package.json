@@ -1,7 +1,7 @@
 {
   "name": "claude-playback-lens-mcp",
-  "version": "0.2.0",
-  "description": "MCP server over Claude Playback Lens — reports token/cost usage and session structure from Claude Code's own recorded transcripts. The npm package ships the engine and the MCP server; the dev-mode web UI ships with the git repo.",
+  "version": "0.3.0",
+  "description": "MCP server over Claude Playback Lens — searches the timeline of Claude Code's own recorded transcripts (prompts, tool calls, file operations) and reports token/cost usage and session structure. The npm package ships the engine and the MCP server; the dev-mode web UI ships with the git repo.",
   "license": "MIT",
   "type": "module",
   "engines": { "node": ">=20" },
