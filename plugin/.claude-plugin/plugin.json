@@ -1,7 +1,7 @@
 {
   "name": "playback-lens",
   "description": "Search and replay your own Claude Code history: every prompt, tool call and file operation, by event kind, tool and date — plus cost and token accounting that flags and repairs unpriced models. Bundles the Playback Lens MCP server and a skill that teaches the model when to reach for it.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "author": {
     "name": "Aaron Orelup"
   },
