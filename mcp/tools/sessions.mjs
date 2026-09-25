@@ -59,6 +59,9 @@ const BADGES = ['fragment', 'forked', 'no-reply', 'retried', 'running', 'cached'
 // not here.
 const HAS_FIELD = { agents: 'agentCount', workflows: 'workflowCount', images: 'images' };
 
+// Display ceiling for the store-wide project column; keeps the distinguishing tail.
+const SLUG_MAX = 44;
+
 export function register(server, deps) {
   const { ctx, call, render } = deps;
 
@@ -364,12 +367,17 @@ function renderSessions({ ctx, render, view, byProject, project, args, cards, ke
   // written into the transcript by Claude Code), so the block carrying them is
   // fenced and labelled per KAN-106 §4.6 / §7.3.7.
   lines.push(FENCE);
-  const rows = [['id', 'started', 'ended', 'turns', 'agents', '$', 'title (recorded)']];
+  // A store-wide list spans projects, and every row's slug is half of its
+  // locator — so the project is a column there (tail-clipped for display:
+  // slugs share a long path prefix and differ at the end). Inside one
+  // project it is constant and named in the header instead.
+  const rows = [['id', ...(byProject ? [] : ['project']), 'started', 'ended', 'turns', 'agents', '$', 'title (recorded)']];
   for (const c of shown) {
     const startMs = num(c.startedAt);
     const endMs = num(c.endedAt);
     rows.push([
       c.id,
+      ...(byProject ? [] : [c.slug]),
       fmtWhen(startMs),
       fmtEnd(startMs, endMs, fmtWhen),
       c.turnCount ?? UNKNOWN,
@@ -378,7 +386,9 @@ function renderSessions({ ctx, render, view, byProject, project, args, cards, ke
       titleCell(c, render),
     ]);
   }
-  lines.push(render.table(rows, { align: ['l', 'l', 'l', 'r', 'r', 'r', 'l'] }));
+  lines.push(byProject
+    ? render.table(rows, { align: ['l', 'l', 'l', 'r', 'r', 'r', 'l'] })
+    : render.table(rows, { align: ['l', 'l', 'l', 'l', 'r', 'r', 'r', 'l'], max: [null, SLUG_MAX], clip: [null, 'tail'] }));
 
   // ---- totals over the shown rows, each with its own denominator. A sum is
   // only over the rows that recorded the thing being summed, and when that is
@@ -429,7 +439,10 @@ function renderSessions({ ctx, render, view, byProject, project, args, cards, ke
   // turns "I found something interesting" into a 200-token follow-up instead
   // of an agent reaching for Bash and grep.
   const first = shown[0];
-  lines.push(`locators: slug="${first.slug}", id="<id column above>"`);
+  const oneSlug = shown.every((c) => c.slug === first.slug);
+  lines.push(oneSlug
+    ? `locators: slug="${first.slug}", id="<id column above>"`
+    : `locators: each row's own project + id (the project column is clipped for display — full slugs via lens_sessions project=… or structured=true)`);
   lines.push(`next: lens_session slug="${first.slug}" id="${first.id}"`);
   lines.push(`      lens_usage scope="session:${first.slug}/${first.id}" group_by="model"`);
   if (!byProject) lines.push(`      lens_sessions project="${first.slug}"   (narrow to one project)`);

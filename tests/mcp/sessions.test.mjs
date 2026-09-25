@@ -126,7 +126,7 @@ test('default listing: header, one line per session, totals with denominators, n
   assert.ok(text.includes(render.FENCE), 'the table carrying recorded titles is fenced');
 
   // Column header, then one line per session, each carrying its full locator.
-  assert.match(text, /^id\s+started\s+ended\s+turns\s+agents\s+\$\s+title \(recorded\)$/m);
+  assert.match(text, /^id\s+(project\s+)?started\s+ended\s+turns\s+agents\s+\$\s+title \(recorded\)$/m);
   assert.ok(text.includes(S1), 'session 1 id is printed in full — it is the locator');
   assert.ok(text.includes(S2), 'session 2 id is printed in full');
   assert.equal(text.split('\n').filter((l) => l.startsWith(S1) || l.startsWith(S2)).length, 2);
