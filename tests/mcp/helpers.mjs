@@ -23,6 +23,10 @@ import os from 'node:os';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
+// Hermetic: never read the developer's real Claude Code plugin ledger (an
+// out-of-date plugin there would add a stale-skill line to every status render).
+process.env.LENS_PLUGINS_FILE ||= path.join(os.tmpdir(), 'lens-test-no-such-installed_plugins.json');
+
 import { createContext, lens } from '../../mcp/context.mjs';
 import * as fixtures from '../fixtures/api/make-store.mjs';
 

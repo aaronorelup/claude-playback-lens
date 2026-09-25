@@ -170,6 +170,10 @@ if (ARGV.includes('--daemon')) {
   // Schemas only: the handlers captured here are never called in forwarder
   // mode; every call goes through invoke() above.
   const tools = engineMod.collectTools(engineMod.schemaDeps());
+  // The usage guide rides the MCP handshake, so it is always as current as
+  // this code — see mcp/instructions.mjs.
+  const { serverInstructions } = await import('./instructions.mjs');
+  const instructions = serverInstructions();
 
   // serveStdio takes a FACTORY, not a server instance. It calls the factory to
   // build the instance it pins to the connection, and it may build and discard
@@ -181,7 +185,7 @@ if (ARGV.includes('--daemon')) {
       // The lens's own version. One version for the app; TOOLS_VERSION tracks
       // this tool surface separately and is reported by lens_status.
       version: lens.core.APP_VERSION,
-    }, { capabilities: { tools: {} } });
+    }, { capabilities: { tools: {} }, instructions });
     for (const t of tools) server.registerTool(t.name, t.def, (args) => invoke(t.name, args));
     return server;
   }

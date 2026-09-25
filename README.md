@@ -72,6 +72,26 @@ skill that teaches the model the search recipes:
 /plugin install playback-lens@claude-playback-lens
 ```
 
+**Keeping it current.**
+
+The server updates itself: the plugin launches it with `npx -y claude-playback-lens-mcp`,
+which fetches the newest release. The **plugin** (and the skill inside it) updates only when
+Claude Code refreshes this marketplace, which it does automatically **only if you turn
+auto-update on**, because Claude Code leaves it off for third-party marketplaces:
+
+`/plugin` → **Marketplaces** → `claude-playback-lens` → **Enable auto-update**
+
+To update right now instead, in a terminal:
+
+```
+claude plugin marketplace update claude-playback-lens
+claude plugin update playback-lens@claude-playback-lens
+```
+
+then restart Claude. Until you do, nothing breaks: the server ships its own usage
+instructions (always as current as the code), `lens_status` names the package, engine and
+plugin versions, and flags a skill that is older than the server.
+
 **Memory.** Claude Code starts one MCP server per session. Each of those is a thin forwarder
 (~70 MB); a single shared daemon per corpus holds the index and exits after 15 idle minutes.
 Ten open sessions cost one index, not ten.
@@ -184,3 +204,15 @@ instance (`--port N`, or the viewer running alongside the MCP server) needs its 
 ## License
 
 MIT
+
+## Releasing (maintainers)
+
+```sh
+npm run release -- 0.3.2
+```
+
+One command bumps the npm package, the plugin manifest and the marketplace entry to the
+same version, runs the suite, commits, tags, pushes, then publishes (npm asks for the
+authenticator code). The push comes first so the matching skill is on GitHub before `npx`
+can serve the new server. `npm publish` on its own is guarded: `prepublishOnly` refuses a
+publish whose three versions differ or whose commit is not on `origin/main`.

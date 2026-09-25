@@ -22,6 +22,26 @@ The plugin bundles two things:
 /plugin install playback-lens@claude-playback-lens
 ```
 
+## Keep it current
+
+The server updates itself: the plugin launches it with `npx -y claude-playback-lens-mcp`,
+which fetches the newest release. The **plugin** (and the skill inside it) updates only when
+Claude Code refreshes this marketplace, which it does automatically **only if you turn
+auto-update on**, because Claude Code leaves it off for third-party marketplaces:
+
+`/plugin` → **Marketplaces** → `claude-playback-lens` → **Enable auto-update**
+
+To update right now instead, in a terminal:
+
+```
+claude plugin marketplace update claude-playback-lens
+claude plugin update playback-lens@claude-playback-lens
+```
+
+then restart Claude. Until you do, nothing breaks: the server ships its own usage
+instructions (always as current as the code), `lens_status` names the package, engine and
+plugin versions, and flags a skill that is older than the server.
+
 ## Requirements
 
 **Node >= 20.** The server is launched with `npx -y claude-playback-lens-mcp`,

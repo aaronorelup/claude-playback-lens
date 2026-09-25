@@ -38,6 +38,7 @@ import * as render from '../../mcp/render.mjs';
 import { createDispatcher } from '../../mcp/dispatch.mjs';
 import { register } from '../../mcp/tools/status.mjs';
 import { TOOLS_VERSION } from '../../mcp/context.mjs';
+import { PACKAGE_VERSION } from '../../mcp/versions.mjs';
 import { fixtureContext, REPO_ROOT, MCP_DIR } from './helpers.mjs';
 
 let H;      // { ctx, lens, fixtures, close }
@@ -146,7 +147,7 @@ test('register() is repeatable — the stdio transport builds a throwaway server
 
 test('ready: version line names all four versions', async () => {
   const text = textOf(await tool().invoke({}));
-  const expect = `LENS ${H.ctx.appVersion} · tools v${TOOLS_VERSION} · index v${H.lens.store.INDEX_VERSION} · pricing v${H.lens.pricing.PRICING_VERSION}`;
+  const expect = `LENS package ${PACKAGE_VERSION} · engine ${H.ctx.appVersion} · tools v${TOOLS_VERSION} · index v${H.lens.store.INDEX_VERSION} · pricing v${H.lens.pricing.PRICING_VERSION}`;
   assert.match(text, new RegExp(`^${esc(expect)}$`, 'm'),
     'a cost figure is only traceable if the rate table and index format are named');
   // …and it is the FIRST line: an agent that reads one line reads this one.
@@ -158,7 +159,7 @@ test('ready: the app version comes from /api/hello, not from ctx alone', async (
   // the authority on which build answered. ctx.appVersion is only the fallback.
   const t = withHello((h) => { h.version = '9.9.9-probe'; });
   const text = textOf(await t.invoke({}));
-  assert.match(text, /^LENS 9\.9\.9-probe · tools v/m);
+  assert.match(text, /^LENS package \S+ · engine 9\.9\.9-probe · tools v/m);
 });
 
 test('ready: the corpus line names the directory AND the ladder rung that won', async () => {

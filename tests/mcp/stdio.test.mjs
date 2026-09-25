@@ -205,7 +205,7 @@ test('a tools/call of lens_status returns a real, non-error result', { timeout: 
   const text = r.result.content.map((c) => c.text ?? '').join('\n');
   // The version header proves the answer came from the linked lens, not from a
   // stub: 3.0.0 is the lens's own APP_VERSION.
-  assert.match(text, /LENS 3\.0\.0/);
+  assert.match(text, /^LENS package \d+\.\d+\.\d+ · engine 3\.0\.0/m);
   assert.match(text, /^corpus: /m);
   // Text-only by default (§7.2).
   assert.equal(r.result.structuredContent, undefined);

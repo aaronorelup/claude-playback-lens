@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { unratedModels, gapLine } from '../pricing-gap.mjs';
+import { versionState, UPDATE_CMD } from '../versions.mjs';
 
 // How many folded problem rows this tool enumerates — in the rendered text AND
 // in `structuredContent`. The index serves up to PROBLEMS_CAP (200) rows, each
@@ -112,7 +113,11 @@ function renderStatus({ ctx, lens, meta, render, hello, view }) {
   // Version line. Four versions, because a cost figure is only traceable if
   // you know the rate table and the index format that produced it.
   const appVersion = (hello && hello.version) || ctx.appVersion;
-  lines.push(`LENS ${appVersion} · tools v${meta.TOOLS_VERSION} · index v${lens.store.INDEX_VERSION} · pricing v${lens.pricing.PRICING_VERSION}`);
+  // package = the npm release (what "which version am I on" means); engine =
+  // the lens.mjs line (3.x), a separate number. Both named, never bare.
+  const v = versionState();
+  lines.push(`LENS package ${v.package ?? UNKNOWN} · engine ${appVersion} · tools v${meta.TOOLS_VERSION} · index v${lens.store.INDEX_VERSION} · pricing v${lens.pricing.PRICING_VERSION}`);
+  if (v.stale) lines.push(`⚠ skill out of date (plugin ${v.plugin} < server ${v.package}) — trust the tool list; tell the user: ${UPDATE_CMD}`);
 
   // Corpus. The source is the winning rung of the lens's own config ladder
   // (--projects > CLAUDE_PROJECTS > config.json > ~/.claude/projects), and it

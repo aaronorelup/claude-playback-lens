@@ -10,11 +10,30 @@
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_IDLE_MS = 15 * 60 * 1000;
 
 const PKG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// A fingerprint of the code itself: the newest mtime among the engine and
+// server sources. An npm upgrade already lands in a new directory (so a new
+// identity), but a checkout edited in place keeps its path — without this, a
+// forwarder would keep talking to a daemon still running the old code until
+// that daemon idled out.
+function codeFingerprint() {
+  let newest = 0;
+  for (const sub of ['mcp', 'mcp/tools', 'server', 'server/api', 'shared']) {
+    let names = [];
+    try { names = fs.readdirSync(path.join(PKG_DIR, sub)); } catch { continue; }
+    for (const n of names) {
+      if (!n.endsWith('.mjs')) continue;
+      try { newest = Math.max(newest, fs.statSync(path.join(PKG_DIR, sub, n)).mtimeMs); } catch { /* raced */ }
+    }
+  }
+  return String(Math.floor(newest));
+}
 
 export function daemonIdentity() {
   const projectsArg = (() => {
@@ -23,6 +42,7 @@ export function daemonIdentity() {
   })();
   return JSON.stringify([
     PKG_DIR.toLowerCase(),
+    codeFingerprint(),
     process.env.CLAUDE_PROJECTS ?? '',
     process.env.LENS_CACHE_DIR ?? '',
     process.env.LENS_PRICING_FILE ?? '',
