@@ -106,7 +106,11 @@ const mods = { pricing, ledger, jsonl, parse, scan, summary, config, store, lru 
 //   2 → 3 (2026-09-24): lens_read and lens_pricing added; lens_search gained
 //   kinds / tool / since / until / distinct / context_chars and a kind:tool
 //   column; cost tools lead with a PRICING GAP banner while a model is unrated.
-export const TOOLS_VERSION = 3;
+//   3 → 4 (2026-09-25): lens_prompts and lens_file added; lens_search matches
+//   paths with either slash and through JSON escaping, searches message content
+//   only by default (metadata:true restores envelope matching), and skips the
+//   calling session (include_current_session:true restores it).
+export const TOOLS_VERSION = 4;
 
 /**
  * createContext() -> ctx

@@ -123,6 +123,10 @@ export function register(server, deps) {
           .describe('Drop repeats of the same message copied into resumed/forked sessions. Applies when any filter is set.'),
         context_chars: z.number().int().min(40).max(2000).default(160)
           .describe('Characters of context around each hit.'),
+        metadata: z.boolean().default(false)
+          .describe("Also match each line's hidden metadata (cwd, git branch, session ids, tool names). Off by default: a username or folder in every line's cwd would otherwise match everything."),
+        include_current_session: z.boolean().default(false)
+          .describe('Also search the session making this call. Off by default — it contains its own query and would crowd out real hits.'),
         cursor: z.string().optional()
           .describe('Resume token printed by a previous search that hit the scan cap. Re-run the same q/scope with it to continue past the cap.'),
         structured: z.boolean().default(false)
@@ -135,7 +139,9 @@ export function register(server, deps) {
         openWorldHint: false,
       },
     },
-    async ({ q, regex, case_sensitive: caseSensitive, scope, limit, cursor, structured, kinds, tool, since, until, distinct, context_chars: ctxWidth }) => {
+    async ({ q, regex, case_sensitive: caseSensitive, scope, limit, cursor, structured, kinds, tool, since, until, distinct, context_chars: ctxWidth, metadata, include_current_session: includeCurrent }, extra) => {
+      const callerId = extra && extra.caller && extra.caller.sessionId;
+      const excludeIds = !includeCurrent && callerId ? [callerId] : [];
       for (const [k, v] of [['since', since], ['until', until]]) {
         if (v && !Number.isFinite(Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00Z` : v))) {
           return render.errorResult(`lens_search: ${k} must be YYYY-MM-DD or an ISO timestamp (got ${JSON.stringify(v)})`);
@@ -290,6 +296,10 @@ export function register(server, deps) {
           until: until ?? null,
           distinct,
           ctxWidth,
+          // Content-only unless metadata is asked for: the envelope carries the
+          // cwd (with the username), branch and ids on EVERY line.
+          classify: !metadata,
+          excludeIds,
           emit: (ev, data) => {
             if (ev === 'match') matches.push(data);
             else if (ev === 'progress') lastProgress = data;
@@ -339,7 +349,7 @@ export function register(server, deps) {
         progress: lastProgress,
         elapsedMs,
         cursorUsed: cursor ?? null,
-        filters: { kinds, tool, since, until },
+        filters: { kinds, tool, since, until, metadata, excluded: excludeIds[0] ?? null },
       });
 
       const json = {
@@ -392,6 +402,8 @@ function renderSearch(o) {
   if (filters.tool) f.push(`tool=${filters.tool}`);
   if (filters.since) f.push(`since=${filters.since}`);
   if (filters.until) f.push(`until=${filters.until}`);
+  if (filters.metadata) f.push('incl. line metadata');
+  if (filters.excluded) f.push(`skipping this session ${filters.excluded.slice(0, 8)} (include_current_session:true to search it)`);
   lines.push(`SEARCH ${JSON.stringify(q)} (${mode}) · scope=${scopeStr}${f.length ? ` · ${f.join(' · ')}` : ''}${cursorUsed ? ' · resumed from cursor' : ''}`);
 
   // 2. What was covered. Denominators from the scan's own progress events; the

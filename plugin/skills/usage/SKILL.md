@@ -22,6 +22,8 @@ Claude Code sessions. Never hand-roll a parse of `~/.claude/projects/**/*.jsonl`
 |---|---|
 | `lens_search` | **Where / when did X happen?** Every hit with its timestamp, session, event kind and context. |
 | `lens_read` | **What exactly happened there?** Opens a hit: the full prompt, the exact tool call, what the tool returned, and the events after it. |
+| `lens_file` | **What happened to this file?** Every write, edit, read, move, copy and delete of one path, oldest first, with the first write and last change called out. |
+| `lens_prompts` | **What did I ask?** The user's prompts in full for a date range / project / session, grouped by session with titles. |
 | `lens_sessions` | Which sessions match a project / date / title / branch / cost. |
 | `lens_session` | The shape of one session: turns, subagents, cost, problems. |
 | `lens_usage` | Tokens and dollars by project, session, model, day or agent. |
@@ -59,15 +61,19 @@ a tool's result is usually the next line).
   `lens_search {q:"higgsfield generate", kinds:["tool_use"], tool:"Bash,PowerShell", limit:200}`,
   then `lens_search {q:".mp4", kinds:["tool_result"], tool:"Bash,PowerShell"}` for the
   saved paths, or `lens_read … following:2` on each call to see its output.
-- *"Which session moved / deleted / edited this file?"* →
-  `lens_search {q:"<file name>", kinds:["tool_use"]}` — the `tool:` column shows
-  Move-Item/mv (Bash/PowerShell), Write, Edit. Open the hit with `lens_read`.
+- *"When was this file first written? Which session moved / deleted it?"* →
+  `lens_file {path:"AaronO\README.md"}` (the distinctive tail; either slash works).
+- *"What did I work on this week?"* → `lens_prompts {since:"2026-09-18"}`, then
+  `lens_sessions {since:…}` for titles and cost.
 - *"When did I decide to use X?"* → `kinds:["prompt","assistant"]`.
 - *"Where did this error first appear?"* → `kinds:["tool_result"]`; hits are
   newest-first, so the last page is the earliest.
 - Regex: `regex:true`, e.g. `q:"nova.*\\.(mp4|webm)"`.
 
-A search scans the whole corpus (several GB) — expect ~15 s. Narrow with
+Search looks at message content only (add `metadata:true` to also match each
+line's cwd, branch and ids) and skips the session you are in
+(`include_current_session:true` to include it). Paths match with either slash.
+A search scans the whole corpus — up to ~40 s on a large one. Narrow with
 `scope:"project:<slug>"` or `since` when you can. A capped search prints a
 `cursor`; pass it back with the same `q`/`scope`/filters to continue.
 

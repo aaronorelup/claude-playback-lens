@@ -27,8 +27,10 @@ import * as searchTool from './tools/search.mjs';
 import * as sessionTool from './tools/session.mjs';
 import * as readTool from './tools/read.mjs';
 import * as pricingTool from './tools/pricing.mjs';
+import * as promptsTool from './tools/prompts.mjs';
+import * as fileTool from './tools/file.mjs';
 
-export const TOOL_MODULES = [statusTool, sessionsTool, usageTool, searchTool, sessionTool, readTool, pricingTool];
+export const TOOL_MODULES = [statusTool, sessionsTool, usageTool, searchTool, sessionTool, readTool, promptsTool, fileTool, pricingTool];
 export { TOOLS_VERSION, lens, REPO_ROOT, MCP_DIR, render };
 
 /**
@@ -107,7 +109,9 @@ export async function createEngine({ log = () => {}, mode = 'daemon' } = {}) {
   }
   deps.onPricingChanged = () => { dispatch = createDispatcher(lens, ctx); };
 
-  async function invoke(name, args) {
+  // caller: { sessionId } of the Claude Code session that made the call —
+  // lens_search uses it to leave that session out (it matches its own query).
+  async function invoke(name, args, caller = null) {
     const t = byName.get(name);
     if (!t) return render.errorResult(`unknown tool ${name}`);
     refreshPricing();
@@ -115,7 +119,7 @@ export async function createEngine({ log = () => {}, mode = 'daemon' } = {}) {
     if (!parsed.success) {
       return render.errorResult(`${name}: invalid arguments — ${parsed.error.message}`);
     }
-    return t.handler(parsed.data, {});
+    return t.handler(parsed.data, { caller: caller || {} });
   }
 
   return {

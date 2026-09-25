@@ -101,7 +101,7 @@ test('registration: name, annotations, and the injection warning in the descript
 
 test('a substring hit renders the recorded locator, fenced', async () => {
   const { SLUG, S1 } = H.fixtures;
-  const r = await tool.invoke({ q: 'NEEDLE_ALPHA' });
+  const r = await tool.invoke({ distinct: false, q: 'NEEDLE_ALPHA' });
   assert.notEqual(r.isError, true);
   const t = textOf(r);
 
@@ -141,16 +141,16 @@ test('the agent transcript is searched and reports its own session-relative file
 });
 
 test('case sensitivity is honoured in both directions', async () => {
-  const insensitive = textOf(await tool.invoke({ q: 'needle_alpha' }));
+  const insensitive = textOf(await tool.invoke({ distinct: false, q: 'needle_alpha' }));
   assert.match(insensitive, /4 matches/);
 
-  const r = await tool.invoke({ q: 'needle_alpha', case_sensitive: true });
+  const r = await tool.invoke({ distinct: false, q: 'needle_alpha', case_sensitive: true });
   assert.notEqual(r.isError, true, 'a real zero is not an error');
   assert.match(textOf(r), /0 matches/);
 });
 
 test('regex mode matches an alternation across both needles', async () => {
-  const t = textOf(await tool.invoke({ q: 'NEEDLE_(ALPHA|BETA)', regex: true }));
+  const t = textOf(await tool.invoke({ distinct: false, q: 'NEEDLE_(ALPHA|BETA)', regex: true }));
   assert.match(t, /\(regex, case-insensitive\)/);
   assert.match(t, /5 matches/);          // 4 ALPHA + 1 BETA
   assert.ok(t.includes('NEEDLE_BETA'));
@@ -209,7 +209,7 @@ test('zero matches is an honest zero with its denominator, never an error', asyn
 });
 
 test('limit renders fewer than were collected and says so', async () => {
-  const t = textOf(await tool.invoke({ q: 'NEEDLE_ALPHA', limit: 2 }));
+  const t = textOf(await tool.invoke({ distinct: false, q: 'NEEDLE_ALPHA', limit: 2 }));
   assert.match(t, /4 matches/);
   assert.match(t, /showing 2 of 4 collected/);
   assert.match(t, /lens_search q="NEEDLE_ALPHA" limit=4/);
@@ -367,7 +367,7 @@ test('a cursor of `{}` PASSES the gate and reaches runFind as opts.after', async
 test('a capped scan says its session denominator counts FULLY-scanned sessions only', async () => {
   // cap=3 lands the cap in the SECOND session, so at least one session (and its
   // bytes) finished first and a progress event exists to quote.
-  const t = textOf(await cappedTool(3).invoke({ q: 'NEEDLE_ALPHA' }));
+  const t = textOf(await cappedTool(3).invoke({ distinct: false, q: 'NEEDLE_ALPHA' }));
 
   const header = t.split('\n').find((l) => l.startsWith('scanned '));
   assert.ok(header, 'the coverage header ships');
@@ -431,7 +431,7 @@ test('a capped scan hands back the cursor as a literal resume call', async () =>
 // shape for an unbuilt tool: name it AND say it is phase 2.
 
 const UNBUILT_TOOLS = ['lens_rows', 'lens_workflow'];
-const PHASE1_TOOLS = ['lens_status', 'lens_sessions', 'lens_usage', 'lens_search', 'lens_session', 'lens_read', 'lens_pricing'];
+const PHASE1_TOOLS = ['lens_status', 'lens_sessions', 'lens_usage', 'lens_search', 'lens_session', 'lens_read', 'lens_pricing', 'lens_prompts', 'lens_file'];
 
 /** Every `name arg=` shape in the text — i.e. everything rendered as a call. */
 const literalCalls = (text) => [...new Set(text.match(/\blens_[a-z_]+(?=\s+[a-z_]+=)/g) || [])];
@@ -528,7 +528,7 @@ test('an agentId recorded only under a workflow directory is found', async () =>
 });
 
 test('structured: true attaches the JSON, and the locators survive into it', async () => {
-  const r = await tool.invoke({ q: 'NEEDLE_ALPHA', structured: true });
+  const r = await tool.invoke({ distinct: false, q: 'NEEDLE_ALPHA', structured: true });
   assert.ok(r.structuredContent, 'structuredContent is attached on request');
   const j = r.structuredContent;
   assert.equal(j.matchesCollected, 4);

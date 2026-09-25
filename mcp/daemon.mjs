@@ -119,8 +119,8 @@ export async function runDaemon() {
     req.on('end', async () => {
       try {
         if (size > MAX_BODY) return send(413, { error: 'request too large' });
-        const { name, args } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        const result = await engine.invoke(name, args);
+        const { name, args, caller } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        const result = await engine.invoke(name, args, caller);
         send(200, { result });
       } catch (e) {
         log(`call failed: ${(e && e.stack) || e}`);

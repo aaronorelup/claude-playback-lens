@@ -58,7 +58,10 @@ function sessionRel(session, relFromProjects) {
 // keeps `index` and the `ctx` snippet offsets in the same string. Never
 // normalize inside this function: the returned index would then address a
 // string the caller does not hold.
-function makeMatcher({ q, re, caseSensitive }) {
+function makeMatcher({ q, re, caseSensitive, matchAll }, { raw = false } = {}) {
+  // matchAll: every text matches at offset 0 (a listing, not a search — e.g.
+  // "every prompt in this date range").
+  if (matchAll) return () => ({ index: 0, length: 0 });
   if (re) {
     const rx = new RegExp(q, caseSensitive ? 'g' : 'gi');
     return (text) => {
@@ -69,14 +72,36 @@ function makeMatcher({ q, re, caseSensitive }) {
     };
   }
   const qn = q.normalize('NFC');
-  const needle = caseSensitive ? qn : qn.toLowerCase();
+  // PATHS. A path is typed with either separator and recorded with either
+  // (Windows tools write `C:\x\y`, bash writes `C:/x/y`), so a query holding a
+  // separator matches both spellings. And a RAW line is JSON: every recorded
+  // backslash is stored as two, so `AaronO\README.md` never occurs verbatim in
+  // the line that holds it. The raw matcher (the line prefilter) therefore
+  // also looks for the JSON-escaped spelling of each variant; block text is
+  // already decoded and needs only the plain ones. Without this a path search
+  // returned "0 matches … a real zero" over lines that contain the path.
+  const variants = new Set([qn]);
+  if (/[\\/]/.test(qn)) { variants.add(qn.replace(/\\/g, '/')); variants.add(qn.replace(/\//g, '\\')); }
+  if (raw) for (const v of [...variants]) variants.add(JSON.stringify(v).slice(1, -1));
+  const needles = [...variants].map((v) => (caseSensitive ? v : v.toLowerCase()));
+  // Cost: every variant is a full pass over the line. All of them share the
+  // longest separator-free run of the query (the separators are the only thing
+  // that differs), so one indexOf of that run rejects nearly every line before
+  // any variant is tried — a multi-needle path search then costs about what a
+  // single-needle one does. (Measured: 6 needles over 4.1 GB went past 60 s.)
+  const core = needles.length > 1
+    ? needles[0].split(/[\\/]+/).reduce((a, b) => (b.length > a.length ? b : a), '')
+    : null;
   return (text) => {
     const hay = caseSensitive ? text : text.toLowerCase();
-    const i = hay.indexOf(needle);
-    // qn.length, not q.length: `index` addresses the NORMALIZED haystack, and an
-    // NFD query is one code unit longer per combining mark — a raw q.length here
-    // would over-run the match span and shift the emitted context window.
-    return i === -1 ? null : { index: i, length: qn.length };
+    if (core && hay.indexOf(core) === -1) return null;
+    for (const needle of needles) {
+      const i = hay.indexOf(needle);
+      // needle.length, not q.length: `index` addresses the NORMALIZED
+      // haystack, and an NFD query is one code unit longer per combining mark.
+      if (i !== -1) return { index: i, length: needle.length };
+    }
+    return null;
   };
 }
 
@@ -180,6 +205,7 @@ function parseDay(v, endOfDay) {
 // A substring the JSON encoder would escape (quote, backslash, control char)
 // never appears verbatim in the raw line, so the raw-line prefilter must not
 // veto it.
+const FULL_TEXT_CAP = 20000;
 const JSON_ESCAPED = /["\\\u0000-\u001f]/;
 
 // The disclosure has to name the RISK, not just the mechanism: the remainder
@@ -227,7 +253,13 @@ export async function runFind(opts) {
   const { projectsDir, fileTable, emit = () => {}, signal, cap = FIND_MATCH_CAP } = opts;
   const scope = opts.scope ?? { kind: 'store' };
   const tally = { regexTruncatedLines: 0 };
-  const match1 = makeMatcher(opts);
+  // Both matchers carry the JSON-escaped spellings: a raw line is JSON, and so
+  // is a tool call's block text (its input is searched as JSON.stringify(input)),
+  // so a path's backslashes are doubled in both.
+  const match1 = makeMatcher(opts, { raw: true });
+  const matchRaw = match1;
+  const excludeIds = new Set(opts.excludeIds || []);
+  const mainOnly = !!opts.mainOnly;
 
   // ---- event filters (see EVENT_KINDS). `filtered` switches matching from
   // line-level to block-level so the kind/tool of every hit is known.
@@ -238,7 +270,10 @@ export async function runFind(opts) {
   const filtered = !!(kinds || toolRx || opts.classify || sinceMs !== null || untilMs !== null);
   const distinct = opts.distinct ? new Set() : null;
   const ctxWidth = Math.max(40, Math.min(2000, opts.ctxWidth || 80));
-  const rawPrefilterOk = !!opts.re || !JSON_ESCAPED.test(String(opts.q ?? ''));
+  // The raw matcher already looks for JSON-escaped spellings, so the line
+  // prefilter is sound for substring queries; a regex over escapable text is
+  // matched block-by-block on every line instead.
+  const rawPrefilterOk = !!opts.matchAll || !opts.re || !JSON_ESCAPED.test(String(opts.q ?? ''));
 
   // ---- scope narrowing
   let sessions = [...(opts.sessions ?? [])];
@@ -300,6 +335,11 @@ export async function runFind(opts) {
   for (const s of sessions) {
     if (signal?.aborted) return;
     const key = `${s.slug}/${s.id}`;
+    if (excludeIds.has(s.id)) {
+      sessionsDone += 1;
+      bytesDone += orderedFiles(s).reduce((x, r) => x + (fileTable?.get(r)?.size ?? 0), 0);
+      continue;
+    }
     if (sinceMs !== null && mt(s) > 0 && mt(s) < sinceMs) {
       // Every file of this session was last written before the window opens,
       // so no line in it can carry a timestamp inside the window.
@@ -322,6 +362,7 @@ export async function runFind(opts) {
     let fileResume = resuming && resume.k === key;
     for (const rel of orderedFiles(s)) {
       if (signal?.aborted) return;
+      if (mainOnly && rel !== s.mainRel) { bytesDone += fileTable?.get(rel)?.size ?? 0; continue; }
       if (fileResume && resume.f !== rel) { bytesDone += fileTable?.get(rel)?.size ?? 0; continue; }
       const startLine = fileResume ? resume.l : 0; // skip lines <= l when resuming
       if (fileResume) { fileResume = false; resuming = false; cursorResolved = true; }
@@ -351,7 +392,7 @@ export async function runFind(opts) {
           // the text that was actually searched.
           const oversized = !!opts.re && hay.length > REGEX_LINE_CAP;
           if (oversized) tally.regexTruncatedLines += 1;
-          const hit = match1(hay);
+          const hit = matchRaw(hay);
           if (filtered) {
             if (!hit && !oversized && rawPrefilterOk) { harvestToolNames(stripped, toolNames); continue; }
             let obj = null;
@@ -379,7 +420,10 @@ export async function runFind(opts) {
                 slug: s.slug, id: s.id,
                 file: sessionRel(s, rel), line, bi: cand.bi,
                 at: atStr, kind: cand.kind, tool: cand.tool,
-                ctx: contextAround(t, h.index, h.length, ctxWidth),
+                // fullText: the whole block (bounded) instead of a window — for
+                // listings that show the event itself (lens_prompts, lens_file).
+                ctx: opts.fullText ? t.slice(0, FULL_TEXT_CAP) : contextAround(t, h.index, h.length, ctxWidth),
+                ...(opts.fullText ? { ctxTruncated: t.length > FULL_TEXT_CAP, ctxLength: t.length } : {}),
               });
               if (matches >= cap) break;
             }

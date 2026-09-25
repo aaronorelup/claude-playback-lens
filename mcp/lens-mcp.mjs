@@ -164,7 +164,7 @@ if (ARGV.includes('--daemon')) {
       }
     }
     await localEngine();
-    return engine.invoke(name, args);
+    return engine.invoke(name, args, { sessionId: process.env.CLAUDE_CODE_SESSION_ID || null });
   }
 
   // Schemas only: the handlers captured here are never called in forwarder

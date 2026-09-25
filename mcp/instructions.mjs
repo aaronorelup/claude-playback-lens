@@ -16,8 +16,13 @@ SEARCH (lens_search) — pick the event kind:
 - kinds:["tool_result"] = what tools returned (also includes files Claude read — prefer a distinctive name over a bare extension).
 - kinds:["assistant"] / ["thinking"] = the model's replies / reasoning.
 - tool:"Bash,PowerShell" (comma list, * wildcard) narrows to those tools; since/until (YYYY-MM-DD) narrow by date; scope:"project:<slug>" narrows to one project.
-- A full search reads several GB (~15-40 s). The current session matches its own searches — skip it with until or scope.
+- Paths match with either slash. The search looks at message content only (metadata:true adds each line's cwd/branch/ids) and skips the session making the call (include_current_session:true to include it).
+- A full search reads the whole history (seconds to ~40 s on a large one); narrow with scope or since.
 - Open any hit with lens_read {slug,id,file,line, following:N} to see the full event and what came after it.
+
+FILE HISTORY (lens_file {path}): every write/edit/read/move/copy/delete of one file, OLDEST FIRST, with the first write and last change called out — "when was this file created", "which session moved/deleted it". Pass the distinctive tail of the path.
+
+PROMPTS IN FULL (lens_prompts {since, until, scope, contains}): what the user typed, whole, grouped by session with titles — "what did I ask this week", "summarize what I worked on". Never read the .jsonl files for this.
 
 SESSIONS: lens_sessions lists sessions (project, dates, title, cost) and gives slug+id; lens_session shows one session's turns, subagents, cost. lens_session include:["images"] / ["files"] lists that session's images / file operations.
 

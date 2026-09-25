@@ -55,6 +55,12 @@ async function ping(info) {
   } catch { return false; }
 }
 
+// The Claude Code session this forwarder serves. Claude Code sets
+// CLAUDE_CODE_SESSION_ID in the environment of the processes it starts.
+export function callerOf() {
+  return { sessionId: process.env.CLAUDE_CODE_SESSION_ID || null };
+}
+
 export function createForwarder({ log = () => {} } = {}) {
   const P = daemonPaths();
   let info = null;
@@ -92,7 +98,7 @@ export function createForwarder({ log = () => {} } = {}) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const inf = await ensure();
       try {
-        const r = await request(inf, 'POST', '/call', { name, args });
+        const r = await request(inf, 'POST', '/call', { name, args, caller: callerOf() });
         if (r.status === 200 && r.json && r.json.result) return r.json.result;
         if (r.status === 503 || r.status === 403) { info = null; continue; } // closing / replaced — respawn
         throw new Error(`daemon answered HTTP ${r.status}`);

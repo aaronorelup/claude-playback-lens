@@ -33,11 +33,13 @@ import { spawn } from 'node:child_process';
 
 import { REPO_ROOT, lensFixtures } from './helpers.mjs';
 
-// The five tools of the phase-1 cut (KAN-106 §8). tools/list must name these
+// The tool surface (TOOLS_VERSION 4). tools/list must name these
 // and nothing else: a tool that appears without being registered here is a
 // surface an agent can call that nobody wrote a description for.
 const EXPECTED_TOOLS = [
+  'lens_file',
   'lens_pricing',
+  'lens_prompts',
   'lens_read',
   'lens_search',
   'lens_session',
@@ -181,7 +183,7 @@ function rpc(method, params) {
 // They run in order and share the one child: the handshake is expensive and
 // the purity assertion is strongest when it covers a whole real session.
 
-test('tools/list names exactly the five lens_* tools', { timeout: BOOT_MS + 30000 }, async () => {
+test('tools/list names exactly the lens_* tools this server ships', { timeout: BOOT_MS + 30000 }, async () => {
   const r = await rpc('tools/list', {});
   assert.ok(r.result, `tools/list failed: ${JSON.stringify(r.error)}`);
   const names = r.result.tools.map((t) => t.name).sort();
