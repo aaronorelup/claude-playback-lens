@@ -6,11 +6,20 @@ description: Search and replay the user's own Claude Code history — every sess
 # Playback Lens: search the timeline of everything you did in Claude Code
 
 > **The lens server is the source of truth, not this file.** The server updates
-> itself (it runs the latest npm release); this skill updates only when the
+> itself (its logon launcher runs the latest npm release); this skill updates only when the
 > plugin does, so it can be older. The tools in your tool list, their
 > descriptions and the lens server's own instructions are always current. Where
 > they disagree with this skill, follow them — and if `lens_status` reports the
 > skill is out of date, pass its update command on to the user once.
+
+**One shared service.** The lens tools come from ONE local process that every
+Claude Code session shares (`http://127.0.0.1:8792/mcp`). Never stop, kill or
+restart it when you finish: other sessions are using it, and it costs nothing
+between calls. If the `lens_*` tools are missing from this session, the service
+was down when the session started. Start it with
+`npx -y claude-playback-lens-mcp --http --detach`, then tell the user to run
+`/mcp` → lens → Reconnect (or start a new session). Suggest
+`npx -y claude-playback-lens-mcp --install-service` once, so it starts at logon.
 
 The lens is a **search tool over the user's recorded sessions** first, and a
 cost tool second. Reach for it for any question about what happened in past

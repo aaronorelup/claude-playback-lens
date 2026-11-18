@@ -42,14 +42,41 @@ says — which is the whole job, and the reason the rest of this README is about
 
 ## One index, many sessions
 
-Claude Code starts one MCP server **per session**. When each of those held its own index, a
-machine with eighteen open sessions carried eighteen copies — 11 GB, measured. So the stdio
-process is a **forwarder**: it answers `tools/list` from the tool schemas alone and forwards
-each `tools/call` over loopback HTTP to one shared **daemon** (`mcp/daemon.mjs`), spawning it
-when none is running. The daemon is a singleton per corpus (an exclusive lock file decides the
-race), accepts only calls carrying the random token from its user-only info file, and exits
-after `LENS_DAEMON_IDLE_MS` (15 min) with no calls. If the daemon cannot be reached the
-forwarder falls back to holding an index itself (`LENS_MCP_INPROCESS=1` forces that shape).
+Claude Code starts one stdio MCP server **per session**. When each of those held its own
+index, a machine with eighteen open sessions carried eighteen copies — 11 GB, measured. So the
+stdio process became a **forwarder**: it answers `tools/list` from the tool schemas alone and
+forwards each `tools/call` over loopback HTTP to one shared **daemon** (`mcp/daemon.mjs`),
+spawning it when none is running. The daemon is a singleton per corpus (an exclusive lock file
+decides the race), accepts only calls carrying the random token from its user-only info file,
+and exits after `LENS_DAEMON_IDLE_MS` (15 min) with no calls. If the daemon cannot be reached
+the forwarder falls back to holding an index itself (`LENS_MCP_INPROCESS=1` forces that shape).
+
+That fixed memory but not process count. Thirty open sessions still meant fifteen or more
+forwarders. Launched through `npx -y` on Windows, each was a chain of four processes
+(`cmd → npx → cmd → node`) plus a console host. None of them were orphans; every parent was
+a live session. So the default is now **one shared service** (`--http`): the same daemon,
+long-lived, also serving MCP itself over Streamable HTTP at `http://127.0.0.1:8792/mcp`
+(`mcp/http-mcp.mjs`, the SDK's `createMcpHandler` behind a ~40-line `node:http` adapter).
+Claude Code connects with `"type": "http"`, so a session costs no process at all.
+
+- **Starting it:** `--install-service` starts it now and at logon (a hidden launcher in the
+  Windows Startup folder; `mcp/service.mjs`). The plugin's SessionStart hook
+  (`plugin/hooks/ensure-service.mjs`) restarts it if it is down, and replaces it if it is
+  older than the plugin. Claude Code connects to MCP servers *while* that hook runs, so the
+  hook cannot rescue the session that found the service down. The logon start can.
+- **One index for every client:** the service takes the daemon lock for its identity (asking
+  an idle-mode daemon to hand over), so stdio forwarders on the same machine find it through
+  the same info file and never build a second index.
+- **Security:** loopback only, and the SDK's Host and Origin checks refuse browser pages (DNS
+  rebinding, cross-site POSTs). There is no token. Any local process can already read
+  `~/.claude/projects`, which is all the endpoint serves, read-only.
+- **The calling session is unknown over HTTP.** Claude Code expands `${VAR}` in `.mcp.json`
+  headers from its own environment, which does not hold `CLAUDE_CODE_SESSION_ID`. In a
+  `claude` started from another session's shell it holds the *parent's* id, which would make
+  the tools skip the wrong session. So no header is read, and the search tools print
+  `calling session unknown` instead of guessing.
+- **stdio stays** as the fallback, and now exits by itself when its session closes stdin or
+  its parent process dies.
 
 ## How this one works
 
@@ -171,10 +198,11 @@ Then register it with Claude Code:
 claude mcp add --scope user lens -- node "C:\path\to\Claude Playback Lens\mcp\lens-mcp.mjs"
 ```
 
-Once the package is published, the same registration without a checkout:
+Or, the recommended shape, as the shared service:
 
 ```sh
-claude mcp add --scope user lens -- npx -y claude-playback-lens-mcp
+node "C:\path	o\Claude Playback Lens\mcp\lens-mcp.mjs" --install-service
+claude mcp add --scope user --transport http lens http://127.0.0.1:8792/mcp
 ```
 
 or add it to `.claude.json` (`~/.claude.json` for every project, or a project-local one):

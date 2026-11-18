@@ -349,7 +349,7 @@ export function register(server, deps) {
         progress: lastProgress,
         elapsedMs,
         cursorUsed: cursor ?? null,
-        filters: { kinds, tool, since, until, metadata, excluded: excludeIds[0] ?? null },
+        filters: { kinds, tool, since, until, metadata, excluded: excludeIds[0] ?? null, callerUnknown: !includeCurrent && !callerId },
       });
 
       const json = {
@@ -404,6 +404,10 @@ function renderSearch(o) {
   if (filters.until) f.push(`until=${filters.until}`);
   if (filters.metadata) f.push('incl. line metadata');
   if (filters.excluded) f.push(`skipping this session ${filters.excluded.slice(0, 8)} (include_current_session:true to search it)`);
+  // Over the shared HTTP service no client names its session (see
+  // mcp/http-mcp.mjs), so there is nothing to skip — say so rather than
+  // let a hit from this very conversation read as history.
+  if (filters.callerUnknown) f.push('calling session unknown (shared HTTP service), so its own events may appear');
   lines.push(`SEARCH ${JSON.stringify(q)} (${mode}) · scope=${scopeStr}${f.length ? ` · ${f.join(' · ')}` : ''}${cursorUsed ? ' · resumed from cursor' : ''}`);
 
   // 2. What was covered. Denominators from the scan's own progress events; the

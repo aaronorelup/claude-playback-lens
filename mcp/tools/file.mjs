@@ -106,7 +106,7 @@ export function register(server, deps) {
       if (!a.include_reads) events = events.filter((e) => e.op !== 'read' && e.op !== 'search');
 
       const lines = [];
-      lines.push(`FILE ${JSON.stringify(a.path)} · scope=${r.scopeStr}${excludeIds.length ? ` · skipping this session ${excludeIds[0].slice(0, 8)}` : ''} · oldest first`);
+      lines.push(`FILE ${JSON.stringify(a.path)} · scope=${r.scopeStr}${excludeIds.length ? ` · skipping this session ${excludeIds[0].slice(0, 8)}` : (a.include_current_session ? '' : ' · calling session unknown (shared HTTP service), so its own events may appear')} · oldest first`);
       lines.push(coverageLine(render, r));
       if (events.length === 0) {
         lines.push(r.capped

@@ -2,8 +2,8 @@
 //
 // Claude Code shows a server's instructions to the model on every session.
 // Unlike the plugin's skill, they ship INSIDE this package, so they are always
-// exactly as current as the tools they describe — the unpinned `npx -y` that
-// updates the code updates them in the same step. This is where the guidance
+// exactly as current as the tools they describe — whatever updates the code
+// updates them in the same step. This is where the guidance
 // the model must not miss lives; the skill is the longer, optional companion.
 
 import { staleNote } from './versions.mjs';
@@ -16,7 +16,7 @@ SEARCH (lens_search) — pick the event kind:
 - kinds:["tool_result"] = what tools returned (also includes files Claude read — prefer a distinctive name over a bare extension).
 - kinds:["assistant"] / ["thinking"] = the model's replies / reasoning.
 - tool:"Bash,PowerShell" (comma list, * wildcard) narrows to those tools; since/until (YYYY-MM-DD) narrow by date; scope:"project:<slug>" narrows to one project.
-- Paths match with either slash. The search looks at message content only (metadata:true adds each line's cwd/branch/ids) and skips the session making the call (include_current_session:true to include it).
+- Paths match with either slash. The search looks at message content only (metadata:true adds each line's cwd/branch/ids) and skips the session making the call when it can identify it (include_current_session:true to include it); over the shared HTTP service it cannot, and says so — hits from the current conversation are then the newest ones.
 - A full search reads the whole history (seconds to ~40 s on a large one); narrow with scope or since.
 - Open any hit with lens_read {slug,id,file,line, following:N} to see the full event and what came after it.
 

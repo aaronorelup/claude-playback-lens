@@ -11,9 +11,13 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_IDLE_MS = 15 * 60 * 1000;
+// The --http service's port. The viewer UI uses 8791; this is the next one.
+// The plugin's .mcp.json and ensure-service hook use the same default.
+export const DEFAULT_HTTP_PORT = 8792;
 
 const PKG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -50,8 +54,22 @@ export function daemonIdentity() {
   ]);
 }
 
+function stateDir() {
+  return process.env.LENS_STATE_DIR || path.join(os.homedir(), '.claude', 'playback-lens', 'run');
+}
+
+/**
+ * The --http service's record: one per machine (per state dir), not per
+ * identity — the port is machine-wide, so whichever install serves it is
+ * THE service. Read by plugin/hooks/ensure-service.mjs to restart it.
+ */
+export function servicePaths() {
+  const dir = stateDir();
+  return { dir, info: path.join(dir, 'service.json'), log: path.join(dir, 'service.log') };
+}
+
 export function daemonPaths() {
-  const dir = process.env.LENS_STATE_DIR || path.join(os.homedir(), '.claude', 'playback-lens', 'run');
+  const dir = stateDir();
   const key = crypto.createHash('sha1').update(daemonIdentity()).digest('hex').slice(0, 12);
   return {
     dir,
@@ -60,4 +78,28 @@ export function daemonPaths() {
     info: path.join(dir, `daemon-${key}.json`),
     log: path.join(dir, `daemon-${key}.log`),
   };
+}
+
+export function httpPort() {
+  const n = Number.parseInt(process.env.LENS_MCP_PORT ?? '', 10);
+  return Number.isInteger(n) && n >= 0 && n < 65536 ? n : DEFAULT_HTTP_PORT;
+}
+
+/** Describe who holds a port: another lens service, or something else. */
+export function portOwner(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/health', timeout: 1500 }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        let j = null;
+        try { j = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { /* not ours */ }
+        resolve(j && j.app === 'claude-playback-lens'
+          ? `a Playback Lens service (pid ${j.pid}, ${j.version}) already serves it`
+          : 'held by some other program');
+      });
+    });
+    req.on('error', () => resolve('held by some other program'));
+    req.on('timeout', () => req.destroy());
+  });
 }

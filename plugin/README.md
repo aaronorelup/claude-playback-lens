@@ -17,16 +17,30 @@ The plugin bundles two things:
 
 ## Install
 
+The plugin connects to **one shared local service** (`http://127.0.0.1:8792/mcp`) instead of
+starting a server process per session. Start the service now and at every logon (once per
+machine; on Windows a hidden Startup-folder launcher, no admin):
+
+```
+npx -y claude-playback-lens-mcp --install-service
+```
+
+Then:
+
 ```
 /plugin marketplace add aaronorelup/claude-playback-lens
 /plugin install playback-lens@claude-playback-lens
 ```
 
+The plugin's SessionStart hook restarts the service if it is not running. Claude Code
+connects to MCP servers while that hook runs, so a session that found the service down starts
+without the lens tools. The next session has them, or run `/mcp` → lens → Reconnect.
+
 ## Keep it current
 
-The server updates itself: the plugin launches it with `npx -y claude-playback-lens-mcp`,
-which fetches the newest release. The **plugin** (and the skill inside it) updates only when
-Claude Code refreshes this marketplace, which it does automatically **only if you turn
+The logon launcher runs the newest npm release, and the plugin's hook replaces a running
+service that is older than the plugin. The **plugin** (and the skill inside it) updates only
+when Claude Code refreshes this marketplace, which it does automatically **only if you turn
 auto-update on**, because Claude Code leaves it off for third-party marketplaces:
 
 `/plugin` → **Marketplaces** → `claude-playback-lens` → **Enable auto-update**
@@ -44,14 +58,12 @@ plugin versions, and flags a skill that is older than the server.
 
 ## Requirements
 
-**Node >= 20.** The server is launched with `npx -y claude-playback-lens-mcp`,
-which fetches the npm package on first run — plugin installs never run
-`npm install`, so nothing is vendored here.
+**Node >= 20** on PATH (the hook and the service are both `node`).
 
-Nothing writes to your corpus, and nothing leaves your machine. The only file
-the plugin writes is your own rate file, `~/.claude/playback-lens/pricing.json`.
-One shared background process holds the index for all sessions and exits after
-15 idle minutes.
+Nothing writes to your corpus, and nothing leaves your machine. The service listens on
+127.0.0.1 only and refuses browser pages. Files it writes: your rate file
+`~/.claude/playback-lens/pricing.json`, and its state and log under
+`~/.claude/playback-lens/run/`. To remove it: `npx -y claude-playback-lens-mcp --uninstall-service`.
 
 ## More
 
