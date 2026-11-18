@@ -33,14 +33,25 @@ const ARGV = process.argv.slice(2);
 if (ARGV.includes('--help') || ARGV.includes('-h')) {
   process.stdout.write(`claude-playback-lens-mcp — MCP server over Claude Code's transcript store
 
-  node mcp/lens-mcp.mjs
+  claude-playback-lens-mcp                    stdio server (one per session; the fallback)
+  claude-playback-lens-mcp --http             the shared service: MCP at http://127.0.0.1:8792/mcp
+  claude-playback-lens-mcp --http --detach    start the service in the background and return
+  claude-playback-lens-mcp --install-service  start it now and at every logon (Windows: Startup folder)
+  claude-playback-lens-mcp --uninstall-service
 
-Speaks MCP over stdio; it is started by an MCP client, not by hand. Running it
-in a terminal is useful only to check that it boots — it will then sit waiting
-for JSON-RPC on stdin.
+THE SHARED SERVICE (recommended). One long-lived process holds the index and
+serves every Claude Code session over Streamable HTTP; an open session costs a
+socket, not a process. The playback-lens plugin connects to it ("type": "http")
+and its session-start hook starts it when it is not running. Register it by
+hand with:
+  claude mcp add --scope user --transport http lens http://127.0.0.1:8792/mcp
 
-The lens engine ships in this same package (../lens.mjs, ../server, ../shared)
-and is imported directly. There is nothing to point at and nothing to find.
+THE STDIO SHAPE (fallback). Every session starts its own copy; those copies are
+thin forwarders to ONE shared idle-exiting daemon, so N sessions cost one index
+but still N processes. Each copy exits when its session closes its stdin or its
+parent process dies. Register it with a direct node command, not npx:
+  npm install -g claude-playback-lens-mcp
+  claude mcp add --scope user lens -- node "<global node_modules>/claude-playback-lens-mcp/mcp/lens-mcp.mjs"
 
 Environment:
   CLAUDE_PROJECTS       corpus root. The lens's own ladder applies:
@@ -48,20 +59,26 @@ Environment:
   LENS_CACHE_DIR        index cache location. Defaults to <repo root>/.cache/mcp —
                         a writer directory of its own, so this process never
                         contends with the lens UI's cache writer at <repo root>/.cache.
+  LENS_MCP_PORT         the --http service's port (default 8792)
   LENS_MCP_MAX_CHARS    hard cap on one tool result's rendered text (default 20000)
   LENS_MCP_INPROCESS=1  hold the index in this process instead of the shared daemon
-  LENS_DAEMON_IDLE_MS   shared daemon exits after this long with no calls (default 900000)
+  LENS_DAEMON_IDLE_MS   idle-mode daemon exits after this long with no calls (default 900000)
   LENS_STATE_DIR        daemon lock/info/log files (default ~/.claude/playback-lens/run)
   LENS_PRICING_FILE     user rate file (default ~/.claude/playback-lens/pricing.json)
-
-Every Claude Code session starts its own copy of this server. Those copies are
-thin forwarders: ONE shared daemon per corpus holds the index and exits when
-idle, so N open sessions cost one index, not N.
-
-Registering it with Claude Code:
-  claude mcp add --scope user lens -- node "<repo root>/mcp/lens-mcp.mjs"
 `);
   process.exit(0);
+}
+
+// ---------------------------------------------------------------- 1b. service verbs
+//
+// --detach, --install-service and --uninstall-service manage the background
+// service and exit; none of them speaks MCP, so they run before the guard.
+if (ARGV.includes('--install-service') || ARGV.includes('--uninstall-service')
+  || (ARGV.includes('--http') && ARGV.includes('--detach'))) {
+  const svc = await import('./service.mjs');
+  if (ARGV.includes('--uninstall-service')) process.exit(svc.uninstallService());
+  if (ARGV.includes('--install-service')) process.exit(await svc.installService());
+  process.exit(await svc.startDetached());
 }
 
 // ---------------------------------------------------------------- 2. stdout guard
@@ -119,7 +136,11 @@ try {
 //
 // THREE shapes, one entry point:
 //
-//   --daemon              the shared process that holds the index
+//   --http                the shared SERVICE: holds the index and serves MCP
+//                         itself at http://127.0.0.1:8792/mcp, never idles
+//                         out. Claude Code connects to it with "type": "http",
+//                         so a session costs no process at all.
+//   --daemon              the idle-exiting process that holds the index
 //                         (mcp/daemon.mjs). Spawned by forwarders, never by
 //                         an MCP client.
 //   default (forwarder)   what every Claude Code session runs. Answers
@@ -129,9 +150,9 @@ try {
 //   LENS_MCP_INPROCESS=1  the pre-daemon shape: this process builds and holds
 //                         its own index. Also the automatic fallback when the
 //                         daemon cannot be reached — availability beats memory.
-if (ARGV.includes('--daemon')) {
+if (ARGV.includes('--daemon') || ARGV.includes('--http')) {
   const { runDaemon } = await import('./daemon.mjs');
-  await runDaemon();
+  await runDaemon({ http: ARGV.includes('--http') });
 } else {
   const engineMod = await import('./engine.mjs');
   const { TOOLS_VERSION, lens } = engineMod;
@@ -189,6 +210,19 @@ if (ARGV.includes('--daemon')) {
     for (const t of tools) server.registerTool(t.name, t.def, (args) => invoke(t.name, args));
     return server;
   }
+
+  // Exit with the session. A stdio server has one client for life: when that
+  // client closes our stdin, or the process that started us is gone, nothing
+  // can ever talk to us again. Without this, a server whose session died
+  // without closing the pipe cleanly would linger until reboot.
+  const bye = (why) => { log(`exiting: ${why}`); process.exit(0); };
+  process.stdin.on('end', () => bye('stdin closed'));
+  process.stdin.on('close', () => bye('stdin closed'));
+  const parent = process.ppid;
+  const parentAlive = () => {
+    try { process.kill(parent, 0); return true; } catch (e) { return e && e.code === 'EPERM'; }
+  };
+  setInterval(() => { if (!parentAlive()) bye(`parent process ${parent} is gone`); }, 15000).unref();
 
   log(`serving MCP over stdio — ${tools.length} tools (tools v${TOOLS_VERSION})`);
   await serveStdio(buildServer, {

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "lens": {
-      "command": "npx",
-      "args": ["-y", "claude-playback-lens-mcp"]
+      "type": "http",
+      "url": "http://127.0.0.1:${LENS_MCP_PORT:-8792}/mcp"
     }
   }
 }

@@ -60,24 +60,45 @@ carry their own cache-read rate.
 
 ## Install
 
+The lens runs as **one shared local service**: a single process holds the index and serves
+MCP over Streamable HTTP at `http://127.0.0.1:8792/mcp`. Every Claude Code session connects
+to it; an open session costs a socket, not a server process. Start it now and at every logon:
+
 ```sh
-claude mcp add --scope user lens -- npx -y claude-playback-lens-mcp
+npx -y claude-playback-lens-mcp --install-service
 ```
 
-That is the whole setup. Or install the Claude Code plugin, which bundles the server with a
-skill that teaches the model the search recipes:
+(On Windows that puts a hidden launcher in your Startup folder, with no admin rights needed and
+no console window. It shows up under Task Manager → Startup apps. Elsewhere it prints the one
+line to add to your login items or systemd user unit. `--uninstall-service` removes it and
+stops the service.)
+
+Then install the Claude Code plugin, which connects to the service and bundles a skill that
+teaches the model the search recipes:
 
 ```
 /plugin marketplace add aaronorelup/claude-playback-lens
 /plugin install playback-lens@claude-playback-lens
 ```
 
+Or, without the plugin, register the service by hand:
+
+```sh
+claude mcp add --scope user --transport http lens http://127.0.0.1:8792/mcp
+```
+
+The plugin also carries a SessionStart hook that restarts the service if it is not running
+(a ~300 ms `node` check per session start). Claude Code connects to MCP servers while that
+hook runs, so a session that found the service down starts without the lens tools. The next
+session has them. That is why the logon start matters.
+
 **Keeping it current.**
 
-The server updates itself: the plugin launches it with `npx -y claude-playback-lens-mcp`,
-which fetches the newest release. The **plugin** (and the skill inside it) updates only when
-Claude Code refreshes this marketplace, which it does automatically **only if you turn
-auto-update on**, because Claude Code leaves it off for third-party marketplaces:
+The logon launcher asks npx for the newest release once per logon. When the plugin updates,
+its session-start hook replaces an older running service with the plugin's version. The
+**plugin** (and the skill inside it) updates only when Claude Code refreshes this marketplace,
+which it does automatically **only if you turn auto-update on**, because Claude Code leaves
+it off for third-party marketplaces:
 
 `/plugin` → **Marketplaces** → `claude-playback-lens` → **Enable auto-update**
 
@@ -92,16 +113,30 @@ then restart Claude. Until you do, nothing breaks: the server ships its own usag
 instructions (always as current as the code), `lens_status` names the package, engine and
 plugin versions, and flags a skill that is older than the server.
 
-**Memory.** Claude Code starts one MCP server per session. Each of those is a thin forwarder
-(~70 MB); a single shared daemon per corpus holds the index and exits after 15 idle minutes.
-Ten open sessions cost one index, not ten.
+**Processes and memory.** One service process holds the index (~0.5 GB on a large history)
+for every session. The older **stdio** shape still works, as a fallback for clients without
+HTTP support. There, every session starts its own server process: a thin forwarder (~50 MB)
+to one shared idle-exiting daemon. It exits when its session closes its stdin or its parent
+process dies. Launch it with `node` directly, not `npx -y`. On Windows, `npx` turns each session's server into
+four processes plus a console host and checks the npm registry on every start:
 
-If you have cloned the repo (you want the viewer, or you want to change something), point at
-the checkout instead — no publish step, edits take effect on the next client restart:
+```sh
+npm install -g claude-playback-lens-mcp
+claude mcp add --scope user lens -- node "<npm root -g>/claude-playback-lens-mcp/mcp/lens-mcp.mjs"
+```
+
+**One caveat of the shared service.** Over HTTP, Claude Code does not tell a server which
+session is calling. So `lens_search`, `lens_file` and `lens_prompts` cannot skip the current
+conversation's own events, and their header line says so (`calling session unknown`). Hits
+from the current conversation are the newest ones. Over stdio they are still skipped.
+
+If you have cloned the repo (you want the viewer, or you want to change something), run the
+service from the checkout instead. There is no publish step; restart the service to pick up
+edits:
 
 ```sh
 npm install
-claude mcp add --scope user lens -- node "/path/to/Claude Playback Lens/mcp/lens-mcp.mjs"
+node "/path/to/Claude Playback Lens/mcp/lens-mcp.mjs" --install-service
 ```
 
 **Requirements.** Node ≥ 20 for the MCP server (the MCP SDK sets that floor). The viewer on

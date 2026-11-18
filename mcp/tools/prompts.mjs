@@ -66,6 +66,7 @@ export function register(server, deps) {
       if (a.until) f.push(`until=${a.until}`);
       if (a.contains) f.push(`contains=${JSON.stringify(a.contains)}`);
       if (excludeIds.length) f.push(`skipping this session ${excludeIds[0].slice(0, 8)}`);
+      else if (!a.include_current_session) f.push('calling session unknown (shared HTTP service), so its own events may appear');
       head.push(`PROMPTS · scope=${r.scopeStr}${f.length ? ` · ${f.join(' · ')}` : ''} · ${a.order} first`);
       head.push(coverageLine(render, r));
       head.push(`${all.length} prompt${all.length === 1 ? '' : 's'} found · showing ${shown.length}${all.length > shown.length ? ` (raise limit, or narrow the dates, for the other ${all.length - shown.length})` : ''}`);

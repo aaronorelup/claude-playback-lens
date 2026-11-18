@@ -2,8 +2,9 @@
 //
 // Three things version separately and can drift:
 //
-//   package   this npm package (claude-playback-lens-mcp). The plugin runs it
-//             with an unpinned `npx -y`, so it updates on its own.
+//   package   this npm package (claude-playback-lens-mcp). The shared service's
+//             logon launcher fetches it with `npx -y …@latest`, and the plugin's
+//             session-start hook replaces a service older than the plugin.
 //   engine    lens.mjs APP_VERSION — the viewer/engine line (3.x). Not the
 //             package version; printed beside it so nobody mistakes one for
 //             the other.
